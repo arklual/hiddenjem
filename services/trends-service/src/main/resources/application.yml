@@ -1,0 +1,193 @@
+# =====================================================================================
+#  trends-service — ядро домена: сага исследования, сборка отчётов, обратная связь.
+#
+#  Значения по умолчанию рассчитаны на промышленную среду; локальные переопределения —
+#  в application-local.yml. Имена переменных окружения совпадают с deploy/compose,
+#  поэтому один и тот же образ работает без слоя трансляции конфигурации.
+# =====================================================================================
+
+server:
+  port: ${SERVER_PORT:8082}
+  shutdown: graceful
+  error:
+    # Ошибки отдаёт ProblemDetailAdvice (RFC 9457, ADR-0013); стандартная страница Spring
+    # только добавила бы второй, несовместимый формат ошибки.
+    whitelabel:
+      enabled: false
+  # Кириллица в сообщениях о прогрессе и в CSV-экспорте: кодировка задаётся явно,
+  # чтобы не зависеть от локали контейнера.
+  servlet:
+    encoding:
+      charset: UTF-8
+      force: true
+
+spring:
+  application:
+    name: trends-service
+  lifecycle:
+    timeout-per-shutdown-phase: 25s
+
+  datasource:
+    url: ${SPRING_DATASOURCE_URL:jdbc:postgresql://localhost:5432/horizon?currentSchema=trends}
+    username: ${SPRING_DATASOURCE_USERNAME:trends_app}
+    password: ${SPRING_DATASOURCE_PASSWORD:trends_dev_pwd}
+    hikari:
+      maximum-pool-size: ${SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE:10}
+      minimum-idle: ${SPRING_DATASOURCE_HIKARI_MINIMUMIDLE:2}
+      connection-timeout: ${SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT:3000}
+      pool-name: trends-pool
+
+  jpa:
+    open-in-view: false          # ленивая загрузка в слое представления — источник N+1 и утечек транзакций
+    hibernate:
+      ddl-auto: validate         # схему создаёт только Flyway; расхождение обязано падать при старте
+    properties:
+      hibernate:
+        default_schema: trends
+        jdbc:
+          batch_size: 50
+          time_zone: UTC
+        order_inserts: true
+        order_updates: true
+        query:
+          in_clause_parameter_padding: true
+
+  flyway:
+    enabled: true
+    schemas: trends
+    default-schema: trends
+    create-schemas: true
+    locations: classpath:db/migration
+    baseline-on-migrate: false
+
+  kafka:
+    bootstrap-servers: ${SPRING_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    consumer:
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Конверт разбирается вручную (EnvelopeReader), потому что на одном топике живёт
+      # несколько типов сообщений: тип известен только после чтения конверта.
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: 20
+    listener:
+      ack-mode: batch
+      concurrency: ${HORIZON_KAFKA_CONCURRENCY:2}
+      missing-topics-fatal: false
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+
+  data:
+    redis:
+      host: ${SPRING_DATA_REDIS_HOST:localhost}
+      port: ${SPRING_DATA_REDIS_PORT:6379}
+      password: ${SPRING_DATA_REDIS_PASSWORD:}
+      database: ${SPRING_DATA_REDIS_DATABASE:0}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+          min-idle: 1
+
+
+horizon:
+  research:
+    # Имена переменных окружения взяты из deploy/compose — конфигурация задаётся в одном месте.
+    # Срок саги по режимам анализа: быстрый укладывает весь анализ в срок ТЗ, качественный — вдвое
+    # дольше. Бюджеты сбора (ingestion, nlp) рассчитаны под эти же сроки и меняются вместе с ними.
+    saga-timeout: ${HORIZON_SAGA_TIMEOUT:PT60M}
+    saga-timeout-quality: ${HORIZON_SAGA_TIMEOUT_QUALITY:PT90M}
+    result-ttl: ${HORIZON_RESULT_TTL:PT24H}
+    cache-ttl: ${HORIZON_REPORT_CACHE_TTL:PT24H}
+    max-documents: ${HORIZON_MAX_DOCUMENTS:5000}
+    user-quota-per-hour: ${HORIZON_USER_QUOTA_PER_HOUR:20}
+    organization-quota-per-hour: ${HORIZON_ORG_QUOTA_PER_HOUR:200}
+    timeout-sweep-batch-size: ${HORIZON_TIMEOUT_SWEEP_BATCH:100}
+    timeout-scan-interval: ${HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL:PT30S}
+    timeout-sweeper-enabled: true
+
+  analytics:
+    # Синхронные вызовы движка: словарь направлений, сопоставление — короткий таймаут.
+    base-url: ${HORIZON_ANALYTICS_BASE_URL:http://analytics-service:8000}
+    internal-token: ${HORIZON_ANALYTICS_INTERNAL_SECRET:}
+    timeout: ${HORIZON_ANALYTICS_TIMEOUT:PT20S}
+    # Трассировка термина — повтор анализа плюс очередь чужих вопросов к движку. Её ждёт фоновый
+    # поток, а не человек (он опрашивает готовность), поэтому таймаут лишь страхует от зависания.
+    explain-timeout: ${HORIZON_ANALYTICS_EXPLAIN_TIMEOUT:PT20M}
+
+  sse:
+    # Держать соединение дольше саги незачем: после таймаута запрос всё равно терминален.
+    timeout-ms: ${HORIZON_SSE_TIMEOUT_MS:600000}
+    heartbeat-interval-ms: ${HORIZON_SSE_HEARTBEAT_MS:15000}   # ADR-0012
+    redis-fanout: ${HORIZON_SSE_REDIS_FANOUT:true}
+
+  kafka:
+    consumers:
+      # Группы именуются <сервис>.<топик>.<мажор>: имя группы — это позиция чтения,
+      # менять его = перечитать топик с начала, поэтому оно фиксировано и версионировано.
+      ingestion-events:
+        group-id: ${HORIZON_GROUP_INGESTION_EVENTS:trends-service.ingestion-events.v1}
+      analysis-events:
+        group-id: ${HORIZON_GROUP_ANALYSIS_EVENTS:trends-service.analysis-events.v1}
+
+  outbox:
+    enabled: true
+    poll-interval: ${HORIZON_OUTBOX_POLL_INTERVAL:PT0.2S}
+    batch-size: ${HORIZON_OUTBOX_BATCH_SIZE:100}
+    max-attempts: ${HORIZON_OUTBOX_MAX_ATTEMPTS:25}
+    retention: ${HORIZON_OUTBOX_RETENTION:P7D}
+
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics
+  endpoint:
+    health:
+      probes:
+        enabled: true            # /actuator/health/liveness и /readiness для Kubernetes
+      show-details: when-authorized
+      group:
+        readiness:
+          # Redis намеренно не входит в readiness: сервис работоспособен без него
+          # (кэш промахивается, квоты fail-open), и вывод реплики из ротации был бы
+          # превращением деградации в отказ (ADR-0011).
+          #
+          # Брокера здесь тоже нет, и это не упущение. Во-первых, индикатора `kafka`
+          # не существует: Spring Boot такого не поставляет, и строка `include: db, kafka`
+          # роняла сервис при старте — «Included health contributor 'kafka' in group
+          # 'readiness' does not exist». Во-вторых, если бы он был, включать его сюда всё
+          # равно не следовало: команды уходят через outbox (`OutboxCommandSender`), то есть
+          # недоступность брокера означает отложенную доставку, а не отказ обслуживания.
+          include: db, readinessState
+  health:
+    redis:
+      enabled: true
+  metrics:
+    tags:
+      application: trends-service
+  tracing:
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLER_ARG:0.1}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+  observations:
+    key-values:
+      service: trends-service
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+    disable-swagger-default-url: true
+  packages-to-scan: dev.horizon.trends.adapter.web
+
+logging:
+  level:
+    root: INFO
+    dev.horizon.trends: INFO

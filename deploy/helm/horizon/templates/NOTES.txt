@@ -1,0 +1,84 @@
+
+  Horizon {{ .Chart.AppVersion }} развёрнут в namespace {{ .Release.Namespace }} (релиз {{ .Release.Name }}).
+  Среда: {{ .Values.global.environment }}
+
+  ─────────────────────────────────────────────────────────────────────────────
+  РАЗВЁРНУТЫЕ НАГРУЗКИ
+  ─────────────────────────────────────────────────────────────────────────────
+{{- range $name, $svc := .Values.services }}
+{{- if $svc.enabled }}
+    {{ printf "%-20s" $name }} порт {{ $svc.port }}{{ if $svc.hpa.enabled }}   HPA: {{ $svc.hpa.minReplicas }}–{{ $svc.hpa.maxReplicas }}{{ else }}   реплик: {{ $svc.replicas | default 2 }}{{ end }}
+{{- end }}
+{{- end }}
+
+  ─────────────────────────────────────────────────────────────────────────────
+  ДОСТУП
+  ─────────────────────────────────────────────────────────────────────────────
+{{- if .Values.ingress.enabled }}
+    UI и API:   http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.global.domain }}
+    OpenAPI:    http{{ if .Values.ingress.tls.enabled }}s{{ end }}://{{ .Values.global.domain }}/api/v1
+{{- if .Values.ingress.tls.enabled }}
+
+    Сертификат выпускает cert-manager (issuer: {{ .Values.ingress.tls.issuer }}).
+    Проверить выпуск:
+        kubectl get certificate {{ .Values.ingress.tls.secretName }} -n {{ .Release.Namespace }}
+    Пока сертификат не выпущен, сайт отдаёт ошибку TLS — это ожидаемо
+    в первые минуты после установки.
+{{- end }}
+{{- else }}
+    Ingress выключен. Проброс порта для проверки:
+        kubectl port-forward -n {{ .Release.Namespace }} svc/{{ include "horizon.fullname" . }}-gateway 8080:{{ .Values.services.gateway.port }}
+{{- end }}
+
+  ─────────────────────────────────────────────────────────────────────────────
+  ПРОВЕРКА ПОСЛЕ УСТАНОВКИ
+  ─────────────────────────────────────────────────────────────────────────────
+    1. Все поды готовы:
+         kubectl get pods -n {{ .Release.Namespace }} -l app.kubernetes.io/instance={{ .Release.Name }}
+
+    2. Миграции применились (первый старт занимает до нескольких минут —
+       на это рассчитан startupProbe):
+         kubectl logs -n {{ .Release.Namespace }} -l app.kubernetes.io/name=trends-service --tail=50 | grep -i flyway
+
+    3. Сага проходит целиком: отправьте запрос на исследование и дождитесь
+       статуса COMPLETED. Зелёные поды сами по себе не доказывают, что
+       конвейер работает, — событийная часть проверяется только сквозным сценарием.
+
+  ─────────────────────────────────────────────────────────────────────────────
+  ЧТО ПРОВЕРИТЬ, ЕСЛИ ПОДЫ НЕ ПОДНИМАЮТСЯ
+  ─────────────────────────────────────────────────────────────────────────────
+{{- if not .Values.secrets.externalSecret.enabled }}
+    * Secret `{{ .Values.secrets.name }}` НЕ создаётся этим релизом
+      (secrets.externalSecret.enabled = false). Без него поды остаются
+      в CreateContainerConfigError. Создайте его вручную — набор ключей
+      перечислен в templates/externalsecret.yaml.
+{{- else }}
+    * ExternalSecret должен успеть синхронизироваться:
+        kubectl get externalsecret {{ .Values.secrets.name }} -n {{ .Release.Namespace }}
+      Статус SecretSynced=False означает, что путь `{{ .Values.secrets.externalSecret.remotePath }}`
+      в хранилище недоступен или в нём нет нужных ключей.
+{{- end }}
+{{- if .Values.networkPolicy.enabled }}
+    * Действует политика «запретить всё». Если сервис не может достучаться
+      до базы или брокера, проверьте, что цель описана в
+      services.<имя>.networkPolicy.egressInfra, а метки в
+      values.infrastructure.* совпадают с реальными метками подов:
+        kubectl get pods -n {{ .Values.infrastructure.postgres.namespace }} --show-labels
+      Отдельно проверьте, что CNI кластера вообще поддерживает NetworkPolicy:
+      на CNI без поддержки объекты создаются и молча игнорируются.
+{{- end }}
+    * Диагностика конкретного пода:
+        kubectl describe pod -n {{ .Release.Namespace }} <pod>
+        kubectl logs -n {{ .Release.Namespace }} <pod> --previous
+
+  ─────────────────────────────────────────────────────────────────────────────
+  ОТКАТ
+  ─────────────────────────────────────────────────────────────────────────────
+    helm rollback {{ .Release.Name }} -n {{ .Release.Namespace }}
+
+    Внимание: откат чарта возвращает МАНИФЕСТЫ, но не откатывает миграции
+    базы данных. Миграции обязаны быть обратно совместимыми на одну версию
+    назад (NFR-M7) — при откате через две версии сначала сверьтесь
+    с планом отката в описании миграции.
+
+  Runbook'и и SLO: docs/04-operations/02-slo-and-runbooks.md

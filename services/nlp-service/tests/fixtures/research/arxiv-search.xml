@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom" xmlns:arxiv="http://arxiv.org/schemas/atom">
+  <title type="html">ArXiv Query: search_query=all:neuromorphic AND all:edge</title>
+  <id>http://arxiv.org/api/query</id>
+  <updated>2026-09-27T00:00:00-04:00</updated>
+  <entry>
+    <id>http://arxiv.org/abs/2604.01234v1</id>
+    <updated>2026-04-02T17:59:59Z</updated>
+    <published>2026-04-02T17:59:59Z</published>
+    <title>Neuromorphic Edge Chips in Standard Design Flows</title>
+    <summary>  We present neuromorphic edge chips that are integrated into a standard EDA flow and
+  evaluate spiking inference on battery-powered sensors. The chips reach sub-milliwatt
+  inference for keyword spotting and gesture recognition while remaining compatible with
+  commercial place-and-route tools.
+    </summary>
+    <author><name>Ada Lovelace</name></author>
+    <author><name>Alan Turing</name></author>
+    <link href="http://arxiv.org/abs/2604.01234v1" rel="alternate" type="text/html"/>
+    <arxiv:primary_category term="cs.AR" scheme="http://arxiv.org/schemas/atom"/>
+  </entry>
+</feed>

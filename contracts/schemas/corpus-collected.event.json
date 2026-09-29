@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/corpus-collected.event.json",
+  "title": "CorpusCollected",
+  "type": "object",
+  "required": ["researchRequestId", "attempt", "snapshotId", "documentCount", "sourcesUsed", "partial",
+               "windowFrom", "windowTo", "contentHash"],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId":  { "type": "string", "format": "uuid" },
+    "attempt":            { "type": "integer", "minimum": 1 },
+    "snapshotId":         { "type": "string", "format": "uuid" },
+    "documentCount":      { "type": "integer", "minimum": 0 },
+    "sourcesUsed":        { "type": "array", "items": { "type": "string" } },
+    "unavailableSources": { "type": "array", "items": { "type": "string" }, "default": [] },
+    "partial":            { "type": "boolean" },
+    "windowFrom":         { "type": "string", "format": "date" },
+    "windowTo":           { "type": "string", "format": "date" },
+    "contentHash":        { "type": "string", "minLength": 64, "maxLength": 64,
+                            "description": "SHA-256 отсортированного списка documentId — основа воспроизводимости" }
+  }
+}

@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/envelope.json",
+  "title": "Message Envelope",
+  "description": "Общая оболочка всех сообщений Horizon. Дублируется в заголовках Kafka для дешёвой фильтрации.",
+  "type": "object",
+  "required": ["messageId", "type", "schemaVersion", "occurredAt", "source", "payload"],
+  "additionalProperties": false,
+  "properties": {
+    "messageId":     { "type": "string", "format": "uuid", "description": "Ключ идемпотентности потребителя" },
+    "type":          { "type": "string", "examples": ["horizon.analysis.DomainAnalyzed"] },
+    "schemaVersion": { "type": "integer", "minimum": 1 },
+    "occurredAt":    { "type": "string", "format": "date-time" },
+    "source":        { "type": "string", "examples": ["trends-service"] },
+    "correlationId": { "type": ["string", "null"], "description": "researchRequestId для событий саги" },
+    "causationId":   { "type": ["string", "null"], "description": "messageId сообщения-причины" },
+    "traceparent":   { "type": ["string", "null"], "description": "W3C Trace Context" },
+    "payload":       { "type": "object" }
+  }
+}

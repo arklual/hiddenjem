@@ -1,0 +1,160 @@
+asyncapi: 3.0.0
+info:
+  title: Horizon Event Backbone
+  version: 1.0.0
+  description: |
+    Асинхронные контракты между сервисами Horizon (ADR-0002).
+    Транспорт — Kafka-совместимый брокер. Формат — JSON, схемы в `contracts/schemas/`.
+
+    Соглашения:
+      * Топики: `horizon.<context>.<kind>.v<major>`, где kind ∈ {commands, events}.
+      * Каждое сообщение обёрнуто в `Envelope` (см. schemas/envelope.json).
+      * Ключ партиционирования — `researchRequestId` (для саги) или `documentId` (для потока документов),
+        что гарантирует порядок в пределах одной саги/документа.
+      * Доставка at-least-once; потребители идемпотентны по `messageId` (ADR-0003).
+      * Обратно несовместимое изменение = новый топик с новым мажором.
+      * Неуспех после `maxAttempts` → топик `<topic>.dlq` с заголовками причины.
+
+defaultContentType: application/json
+
+servers:
+  local:
+    host: localhost:19092
+    protocol: kafka
+    description: Redpanda в docker-compose
+  production:
+    host: kafka.horizon.svc.cluster.local:9092
+    protocol: kafka
+
+channels:
+  ingestionCommands:
+    address: horizon.ingestion.commands.v1
+    description: Команды сервису сбора данных
+    messages:
+      CollectDomainCorpus:
+        $ref: '#/components/messages/CollectDomainCorpus'
+
+  ingestionEvents:
+    address: horizon.ingestion.events.v1
+    description: События сервиса сбора данных
+    messages:
+      CorpusCollected:
+        $ref: '#/components/messages/CorpusCollected'
+      CorpusCollectionFailed:
+        $ref: '#/components/messages/CorpusCollectionFailed'
+      CorpusCollectionProgressed:
+        $ref: '#/components/messages/CorpusCollectionProgressed'
+
+  documents:
+    address: horizon.documents.v1
+    description: Поток канонических документов (высокий объём)
+    messages:
+      DocumentIngested:
+        $ref: '#/components/messages/DocumentIngested'
+
+  analysisCommands:
+    address: horizon.analysis.commands.v1
+    description: Команды аналитическому движку
+    messages:
+      AnalyzeDomain:
+        $ref: '#/components/messages/AnalyzeDomain'
+
+  analysisEvents:
+    address: horizon.analysis.events.v1
+    description: Результаты аналитического движка
+    messages:
+      DomainAnalyzed:
+        $ref: '#/components/messages/DomainAnalyzed'
+      DomainAnalysisFailed:
+        $ref: '#/components/messages/DomainAnalysisFailed'
+      AnalysisProgressed:
+        $ref: '#/components/messages/AnalysisProgressed'
+
+  trendEvents:
+    address: horizon.trends.events.v1
+    description: События домена трендов (для аудита, аналитики, будущих подписчиков)
+    messages:
+      TrendReportGenerated:
+        $ref: '#/components/messages/TrendReportGenerated'
+      ResearchRequestFailed:
+        $ref: '#/components/messages/ResearchRequestFailed'
+      TrendFeedbackRecorded:
+        $ref: '#/components/messages/TrendFeedbackRecorded'
+
+operations:
+  sendCollectDomainCorpus:
+    action: send
+    channel: { $ref: '#/channels/ingestionCommands' }
+    summary: trends-service поручает собрать корпус по направлению
+  receiveCollectDomainCorpus:
+    action: receive
+    channel: { $ref: '#/channels/ingestionCommands' }
+    summary: ingestion-service принимает команду сбора
+  sendCorpusCollected:
+    action: send
+    channel: { $ref: '#/channels/ingestionEvents' }
+  sendAnalyzeDomain:
+    action: send
+    channel: { $ref: '#/channels/analysisCommands' }
+  receiveAnalyzeDomain:
+    action: receive
+    channel: { $ref: '#/channels/analysisCommands' }
+    summary: analytics-service принимает команду анализа
+  sendDomainAnalyzed:
+    action: send
+    channel: { $ref: '#/channels/analysisEvents' }
+  publishDocuments:
+    action: send
+    channel: { $ref: '#/channels/documents' }
+
+components:
+  messages:
+    CollectDomainCorpus:
+      name: CollectDomainCorpus
+      title: Собрать корпус по технологическому направлению
+      payload:
+        $ref: '../schemas/collect-domain-corpus.command.json'
+    CorpusCollected:
+      name: CorpusCollected
+      payload:
+        $ref: '../schemas/corpus-collected.event.json'
+    CorpusCollectionFailed:
+      name: CorpusCollectionFailed
+      payload:
+        $ref: '../schemas/failure.event.json'
+    CorpusCollectionProgressed:
+      name: CorpusCollectionProgressed
+      payload:
+        $ref: '../schemas/corpus-collection-progressed.event.json'
+    DocumentIngested:
+      name: DocumentIngested
+      payload:
+        $ref: '../schemas/document-ingested.event.json'
+    AnalyzeDomain:
+      name: AnalyzeDomain
+      payload:
+        $ref: '../schemas/analyze-domain.command.json'
+    DomainAnalyzed:
+      name: DomainAnalyzed
+      payload:
+        $ref: '../schemas/domain-analyzed.event.json'
+    DomainAnalysisFailed:
+      name: DomainAnalysisFailed
+      payload:
+        $ref: '../schemas/failure.event.json'
+    AnalysisProgressed:
+      name: AnalysisProgressed
+      payload:
+        $ref: '../schemas/analysis-progressed.event.json'
+    TrendReportGenerated:
+      name: TrendReportGenerated
+      payload:
+        $ref: '../schemas/trend-report-generated.event.json'
+    ResearchRequestFailed:
+      name: ResearchRequestFailed
+      payload:
+        $ref: '../schemas/failure.event.json'
+    TrendFeedbackRecorded:
+      name: TrendFeedbackRecorded
+      payload:
+        $ref: '../schemas/trend-feedback-recorded.event.json'

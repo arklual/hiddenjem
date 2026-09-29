@@ -1,0 +1,73 @@
+{
+ "total_count": 19989,
+ "incomplete_results": false,
+ "items": [
+  {
+   "id": 801763739,
+   "node_id": "R_kgDOL8nxmw",
+   "name": "transformer-explainer",
+   "full_name": "poloclub/transformer-explainer",
+   "html_url": "https://github.com/poloclub/transformer-explainer",
+   "description": "Transformer Explained Visually: Learn How LLM Transformer Models Work with Interactive Visualization",
+   "created_at": "2024-05-16T21:42:10Z",
+   "updated_at": "2026-09-19T19:05:16Z",
+   "pushed_at": "2026-06-06T12:08:04Z",
+   "stargazers_count": 8597,
+   "watchers_count": 8597,
+   "forks_count": 968,
+   "open_issues_count": 21,
+   "language": "JavaScript",
+   "topics": [
+    "deep-learning",
+    "generative-ai",
+    "gpt",
+    "langauge-model",
+    "llm",
+    "visualization"
+   ],
+   "archived": false,
+   "fork": false
+  },
+  {
+   "id": 770650220,
+   "node_id": "R_kgDOLe8wbA",
+   "name": "transformer-debugger",
+   "full_name": "openai/transformer-debugger",
+   "html_url": "https://github.com/openai/transformer-debugger",
+   "description": null,
+   "created_at": "2024-03-11T23:06:25Z",
+   "updated_at": "2026-09-13T18:17:30Z",
+   "pushed_at": "2026-04-15T17:10:05Z",
+   "stargazers_count": 4123,
+   "watchers_count": 4123,
+   "forks_count": 242,
+   "open_issues_count": 11,
+   "language": "Python",
+   "topics": [],
+   "archived": false,
+   "fork": false
+  },
+  {
+   "id": 841397199,
+   "node_id": "R_kgDOMiazzw",
+   "name": "transformers.js-examples",
+   "full_name": "huggingface/transformers.js-examples",
+   "html_url": "https://github.com/huggingface/transformers.js-examples",
+   "description": "A collection of 🤗 Transformers.js demos and example applications",
+   "created_at": "2024-08-12T10:24:07Z",
+   "updated_at": "2026-09-18T20:00:11Z",
+   "pushed_at": "2026-02-17T18:29:44Z",
+   "stargazers_count": 2097,
+   "watchers_count": 2097,
+   "forks_count": 253,
+   "open_issues_count": 30,
+   "language": "JavaScript",
+   "topics": [
+    "transformers",
+    "transformersjs"
+   ],
+   "archived": false,
+   "fork": false
+  }
+ ]
+}

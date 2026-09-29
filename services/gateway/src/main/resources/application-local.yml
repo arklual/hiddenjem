@@ -1,0 +1,18 @@
+# Local profile: human-readable logs, permissive CORS for the Vite dev server, tracing to console.
+logging:
+  level:
+    org.springframework.cloud.gateway: DEBUG
+
+horizon:
+  gateway:
+    # Список приходит переменной, как и в основном профиле, а не задаётся здесь списком.
+    #
+    # У свойства нет собственной переменной окружения (`horizon.gateway.allowed-origins`), поэтому
+    # жёстко заданный тут список побеждал CORS_ALLOWED_ORIGINS: стенд, открытый не с localhost,
+    # отвечал на вход 403 с пустым телом. В интерфейсе это выглядит как «Недостаточно прав.
+    # Запросите нужную роль у администратора платформы» — про источник запроса ни слова, и потому
+    # ищется это долго. Умолчание оставлено прежним: на машине разработчика ничего не меняется.
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+    # Лимит — тоже переменной, по той же причине, что и список источников выше: число, записанное
+    # здесь литералом, побеждало переменную окружения и делало настройку недействующей.
+    requests-per-minute: ${RATE_LIMIT_PER_MINUTE:1000}

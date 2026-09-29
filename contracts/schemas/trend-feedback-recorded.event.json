@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/trend-feedback-recorded.event.json",
+  "title": "TrendFeedbackRecorded",
+  "type": "object",
+  "required": ["reportId", "trendKey", "userId", "verdict", "recordedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "reportId":   { "type": "string", "format": "uuid" },
+    "trendKey":   { "type": "string" },
+    "userId":     { "type": "string", "format": "uuid" },
+    "verdict":    { "enum": ["RELEVANT", "NOISE", "ALREADY_KNOWN"] },
+    "comment":    { "type": ["string", "null"] },
+    "recordedAt": { "type": "string", "format": "date-time" }
+  }
+}

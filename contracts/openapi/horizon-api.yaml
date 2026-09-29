@@ -1,0 +1,1862 @@
+openapi: 3.1.0
+info:
+  title: Horizon Public API
+  version: 1.0.0
+  description: |
+    Публичный API платформы Horizon — обнаружение зарождающихся научно-технологических
+    трендов (слабых сигналов) в открытых источниках.
+
+    Контракт **first-class**: спецификация является источником истины, реализация проверяется
+    контрактными тестами (`spring-boot-starter-web` + `swagger-request-validator`, Schemathesis для Python).
+
+    Все ошибки — RFC 9457 `application/problem+json` (ADR-0013).
+    Входа нет: организация одна, и API открыт так же, как интерфейс. Служебные вызовы между
+    сервисами защищены общим секретом (`X-Internal-Token`) и в этот контракт не входят.
+  contact:
+    name: Horizon Team
+    url: https://horizon.dev
+  license:
+    name: Proprietary
+
+servers:
+  - url: http://localhost:8080
+    description: Локальная среда (gateway)
+  - url: https://horizon.example.bank
+    description: Промышленная среда
+
+tags:
+  - name: Auth
+    description: Регистрация, вход, обновление токенов
+  - name: Research
+    description: Запросы на исследование технологического направления
+  - name: Reports
+    description: Отчёты по трендам
+  - name: Feedback
+    description: Обратная связь аналитиков
+  - name: SavedDomains
+    description: Сохранённые направления
+  - name: Sources
+    description: Источники данных и прогоны сбора
+  - name: Topics
+    description: Поиск по темам накопленных отчётов
+  - name: Admin
+    description: Администрирование
+
+
+paths:
+  # ─────────────────────────────── Auth ───────────────────────────────
+  /api/v1/research-requests:
+    post:
+      tags: [Research]
+      summary: Запустить анализ технологического направления
+      operationId: submitResearchRequest
+      parameters:
+        - name: Idempotency-Key
+          in: header
+          required: false
+          schema: { type: string, maxLength: 80 }
+          description: Повтор с тем же ключом в течение 24 ч вернёт исходный запрос
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SubmitResearchRequest' }
+      responses:
+        '202':
+          description: Запрос принят, выполняется асинхронно
+          headers:
+            Location:
+              schema: { type: string, format: uri-reference }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchRequestView' }
+        '200':
+          description: >-
+            Новой работы не начато: найден актуальный отчёт, анализ уже идёт либо это повтор по
+            Idempotency-Key. Что именно — в поле `outcome`; готовый `reportId` есть только у
+            `reused`.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchRequestView' }
+        '400': { $ref: '#/components/responses/ValidationProblem' }
+        '429': { $ref: '#/components/responses/RateLimitProblem' }
+    get:
+      tags: [Research]
+      summary: История запросов организации
+      description: >-
+        Запросы всей организации, а не только собственные. Отчёты, переиспользование готового и
+        идущий анализ уже общие — история была последним местом, где работа притворялась личной, и
+        тем местом, где расчёт, к которому присоединился коллега, исчезал вместе с закрытой вкладкой.
+
+
+        У каждой строки есть `mine`: экран сменил смысл, и молчание об этом было бы худшей подачей —
+        аналитик, увидевший у себя то, чего не запускал, решит, что под его учётной записью работают.
+      operationId: listResearchRequests
+      parameters:
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+        - { name: status, in: query, schema: { $ref: '#/components/schemas/ResearchStatus' } }
+        - name: onlyMine
+          in: query
+          schema: { type: boolean, default: false }
+          description: >-
+            Сузить до собственных запросов. Явное сужение, а не режим по умолчанию: тот, кому нужен
+            свой список, об этом знает, а тот, кому нужен командный, о нём не догадывается.
+      responses:
+        '200':
+          description: Страница истории
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchRequestPage' }
+
+  /api/v1/research-requests/{requestId}:
+    get:
+      tags: [Research]
+      summary: Статус запроса
+      operationId: getResearchRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Текущее состояние
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchRequestView' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/research-requests/{requestId}/events:
+    get:
+      tags: [Research]
+      summary: Поток прогресса (Server-Sent Events)
+      description: |
+        `text/event-stream`. Типы событий: `progress`, `completed`, `failed`, `heartbeat`.
+        Данные каждого события — JSON объекта `ResearchRequestView`.
+        При невозможности установить поток клиент обязан деградировать до опроса `GET /research-requests/{id}`.
+      operationId: streamResearchRequestEvents
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+        - name: Last-Event-ID
+          in: header
+          required: false
+          schema: { type: string }
+      responses:
+        '200':
+          description: Поток событий
+          content:
+            text/event-stream:
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/research-requests/{requestId}/cancel:
+    post:
+      tags: [Research]
+      summary: Отменить выполняющийся запрос
+      operationId: cancelResearchRequest
+      parameters:
+        - $ref: '#/components/parameters/RequestId'
+      responses:
+        '200':
+          description: Отменён
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ResearchRequestView' }
+        '409':
+          description: Запрос уже в терминальном состоянии
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  # ────────────────────────────── Reports ─────────────────────────────
+  /api/v1/reports/{reportId}:
+    get:
+      tags: [Reports]
+      summary: Полный отчёт по трендам
+      operationId: getReport
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Отчёт
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrendReport' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/reports/{reportId}/delta:
+    get:
+      tags: [Reports]
+      summary: Что изменилось с предыдущей версии отчёта
+      description: >-
+        Состав ТОП, размеченный на появившиеся, выбывшие и оставшиеся темы, с изменением ранга и
+        балла у оставшихся. Отдельный ресурс, а не поле отчёта: дельта нужна при повторном чтении,
+        и вкладывать её значило бы поднимать вторую версию из хранилища на каждый запрос отчёта.
+
+
+        Темы сопоставляются по `trendKey`, а не по заголовку: заголовок — это подпись кластера, и
+        она законно меняется при том же предмете, поэтому сравнение по нему выдало бы улучшение
+        названия за событие в реальности.
+      operationId: getReportDelta
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+      responses:
+        '200':
+          description: Дельта либо причина, по которой её нет
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ReportDelta' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/reports/{reportId}/explain:
+    get:
+      tags: [Reports]
+      summary: Почему темы нет в отчёте
+      description: >-
+        Прослеживает указанные термины через конвейер анализа и сообщает, на какой стадии каждый из
+        них был отброшен и по какой причине. Отвечает на вопрос «я знаю, что эта технология
+        существует, — почему её нет в отчёте?», который иначе остаётся без ответа и разрушает
+        доверие к ранжированию.
+
+
+        Ответ строится повторным прогоном анализа на том же срезе корпуса — это минуты, поэтому
+        запрос не ждёт движка: пока прогон идёт, ответ — 202 с `Retry-After`, и клиент повторяет тот
+        же запрос, пока не получит 200. Одинаковые вопросы сводятся к одному прогону. Число терминов
+        ограничено пятью.
+      operationId: explainReportTerms
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+        - name: term
+          in: query
+          required: true
+          description: Термин; параметр можно повторить, но не более пяти раз.
+          schema:
+            type: array
+            minItems: 1
+            maxItems: 5
+            items: { type: string }
+      responses:
+        '200':
+          description: Что произошло с каждым термином
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermExplanation' }
+        '202':
+          description: Прогон запущен или ещё идёт; повторите тот же запрос через `Retry-After` секунд
+          headers:
+            Retry-After:
+              description: Через сколько секунд спросить снова
+              schema: { type: integer, minimum: 1 }
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TermExplanationPending' }
+        '400': { $ref: '#/components/responses/ValidationProblem' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+        '502':
+          description: Движок анализа не ответил на запрос трассировки
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/v1/reports/{reportId}/trends/{trendKey}:
+    get:
+      tags: [Reports]
+      summary: Один тренд с полной детализацией
+      operationId: getReportTrend
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+        - name: trendKey
+          in: path
+          required: true
+          schema: { type: string, maxLength: 160 }
+      responses:
+        '200':
+          description: Тренд
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/RankedTrend' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/reports/{reportId}/export:
+    get:
+      tags: [Reports]
+      summary: Экспорт отчёта
+      description: >-
+        Три формата под три разных читателя: JSON для скрипта, CSV для Excel, Markdown для человека,
+        который переносит отчёт в записку комитету. Последний нужен потому, что именно на этом
+        переносе оговорки терялись: вручную переносят выводы, а не сноски.
+
+
+        Во всех форматах отсутствуют личные пометки аналитика: файл передают дальше, а дословный
+        комментарий, написанный для себя, в чужих руках — это не то, что человек соглашался
+        опубликовать. Документ датируется анализом, а не моментом выгрузки, поэтому две выгрузки
+        одного отчёта дают одинаковые байты.
+      operationId: exportReport
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+        - name: format
+          in: query
+          required: true
+          schema: { type: string, enum: [json, csv, markdown] }
+      responses:
+        '200':
+          description: Файл экспорта
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrendReport' }
+            text/markdown:
+              # Записка: заголовок с версией и методологией, блок оговорок, затем темы по порядку
+              # рейтинга — у каждой определение, проблема, польза, балл с уверенностью и ссылки на
+              # источники. Оговорки стоят ДО тем намеренно: сноска в конце отбрасывается при
+              # копировании первой половины документа, и до комитета доезжает только та оговорка,
+              # которую нельзя не увидеть.
+              schema: { type: string }
+            text/csv:
+              # Файл состоит из двух блоков: портрет направления парами «ключ;значение», пустая
+              # строка, затем таблица трендов. Первая строка намеренно не является заголовком
+              # таблицы: BOM выше уже объявляет этот формат тем, который открывают люди, машинам
+              # служит JSON-экспорт, а оговорки (доля тем на тонкой доказательной базе, недоступные
+              # источники) по BR-A17 не могут быть опущены — и под пятнадцатью строками они спрятаны.
+              schema: { type: string }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  # ───────────────────────────── Feedback ─────────────────────────────
+  /api/v1/reports/{reportId}/trends/{trendKey}/feedback:
+    put:
+      tags: [Feedback]
+      summary: Оценить тренд
+      operationId: submitTrendFeedback
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+        - name: trendKey
+          in: path
+          required: true
+          schema: { type: string, maxLength: 160 }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TrendFeedbackRequest' }
+      responses:
+        '200':
+          description: Оценка сохранена
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TrendFeedbackView' }
+        '400': { $ref: '#/components/responses/ValidationProblem' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+    delete:
+      tags: [Feedback]
+      summary: Снять свою пометку с темы
+      description: >-
+        Отдельная операция, а не вердикт «полезно». Пометка «не технология» стала действием с
+        последствиями: движок убирает такую тему до отбора в ТОП-N, и в отчёте её больше нет.
+        Отменить это, объявив тему полезной, значит сделать утверждение, которого аналитик не делал,
+        — а его унаследует следующий отчёт. Снимается только собственная пометка: ключи, которых
+        аналитик не помечал, отвергаются, иначе появился бы способ писать в разметку произвольные
+        строки.
+      operationId: withdrawTrendFeedback
+      parameters:
+        - $ref: '#/components/parameters/ReportId'
+        - name: trendKey
+          in: path
+          required: true
+          schema: { type: string, maxLength: 160 }
+      responses:
+        '204': { description: Пометка снята }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  # ──────────────────────────── SavedDomains ──────────────────────────
+  /api/v1/saved-domains/refresh:
+    post:
+      tags: [SavedDomains]
+      summary: Поставить на пересчёт все отслеживаемые направления
+      description: >-
+        Радар полезен ровно настолько, насколько свеж. Обновлять двадцать направлений по одному —
+        работа, которую никто не делает, и экран начинает показывать позапрошлый квартал с
+        уверенным видом.
+
+
+        Отвечает 200 со строкой на каждое направление даже если не поставлено ни одно: три исхода
+        из четырёх не являются отказом, а HTTP-ошибка заставила бы клиента гадать, что произошло с
+        каждым направлением. Пакет подчиняется той же квоте и тому же переиспользованию свежего
+        результата, что и одиночный запуск, — иначе кнопка стала бы способом обойти лимит.
+      operationId: refreshRadar
+      responses:
+        '200':
+          description: Исход по каждому направлению
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RadarRefresh' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/saved-domains/digest:
+    get:
+      tags: [SavedDomains]
+      summary: Состояние всех отслеживаемых направлений
+      description: >-
+        Одна строка на отслеживаемое направление: сводка, сколько тем вошло и выбыло с прошлой
+        версии, и первые темы для узнавания. Экран, который аналитик открывает утром, чтобы понять,
+        куда потратить день.
+
+
+        Собирается на сервере, потому что клиентская альтернатива — два запроса на направление:
+        пятьдесят сохранённых превратились бы в сотню обращений и экран, заполняющийся секундами.
+
+
+        Направление, по которому анализ ещё не запускался, сохраняет свою строку без сводки:
+        «здесь ещё ничего не считалось» — это и есть ответ, за которым пришли.
+      operationId: getRadarDigest
+      responses:
+        '200':
+          description: Состояние портфеля направлений
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/RadarDigest' }
+
+  /api/v1/research-requests/quota:
+    get:
+      tags: [Research]
+      summary: Остаток часового бюджета
+      description: >-
+        Сколько запросов ещё можно сделать. Оценка, а не обязательство: окно скользящее, а
+        организационная половина общая — коллега может потратить слот между ответом и нажатием.
+
+
+        `known: false` вместо нулей, когда счётчик недоступен. Квота fail-open: запросы всё равно
+        проходят, и сказать «бюджета нет» значило бы заставить интерфейс утверждать обратное тому,
+        что делает система.
+      operationId: getQuota
+      responses:
+        '200':
+          description: Остаток бюджета
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Quota' }
+
+  /api/v1/saved-domains/{id}/seen:
+    post:
+      tags: [SavedDomains]
+      summary: Отметить направление просмотренным
+      description: >-
+        Отдельное действие, а не побочный эффект загрузки радара: радар открывают, чтобы решить, куда
+        смотреть, и пометить в этот момент всё просмотренным значило бы стереть ответ на вопрос, ради
+        которого пришли.
+
+
+        Отметка личная: визит коллеги не гасит чужую новизну.
+      operationId: markDirectionSeen
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Отмечено }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/topics/search:
+    get:
+      tags: [Topics]
+      summary: Писали ли мы про эту тему раньше
+      description: >-
+        Корпус отчётов организации — самое дорогое, что производит продукт, и до сих пор он был
+        доступен только на запись. Повторное использование свежего отчёта отвечает на вопрос «это же
+        самое направление», пересечение направлений смотрит лишь портфель одного аналитика и лишь
+        последние версии, история ищет по формулировкам запросов. Тема, найденная полгода назад
+        коллегой в другом направлении, не находилась ничем.
+
+
+        Совпадение — подстрока названия темы без учёта регистра. Морфология и веса требуют
+        настройки, подтвердить которую нечем, а ненастроенная выдача отвечает уверенно и неверно.
+
+
+        Границей выступает организация. Порядок детерминирован: сначала темы, всплывшие в большем
+        числе направлений, затем по лучшему месту в рейтинге, затем по ключу темы. Баллов нет
+        нигде — балл нормирован внутри своего корпуса, и рядом с другим он был бы сравнён читателем
+        независимо от подписи.
+      operationId: searchTopics
+      parameters:
+        - name: q
+          in: query
+          required: true
+          description: Фрагмент названия темы, не короче двух символов
+          schema: { type: string, minLength: 2, maxLength: 200 }
+      responses:
+        '200':
+          description: Найденные темы и их вхождения
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/TopicSearchResult' }
+        '400': { $ref: '#/components/responses/ValidationProblem' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/saved-domains/overlap:
+    get:
+      tags: [SavedDomains]
+      summary: Темы, встречающиеся сразу в нескольких направлениях
+      description: >-
+        Тема, найденная в одном направлении, — наблюдение. Та же тема, независимо всплывшая в двух
+        несмежных направлениях, — конвергенция: признак, что технология выходит за пределы своей
+        ниши. Методология этого не видит по построению: индикаторы считаются внутри корпуса одного
+        запроса.
+
+
+        Баллов здесь нет намеренно. Балл нормирован внутри своего корпуса (§12 методологии), у
+        баллов разных направлений нет общей шкалы, и число, показанное рядом с другим, будет
+        сравнено читателем независимо от подписи. Сопоставляется состав и позиция.
+
+
+        Пустой список при `directionsCompared` меньше двух означает «сравнивать пока не с чем», а не
+        «пересечений нет»; это разные ответы, и клиент обязан их различать.
+      operationId: getDirectionOverlap
+      responses:
+        '200':
+          description: Пересечение направлений портфеля
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DirectionOverlap' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/directions/known:
+    get:
+      tags: [Research]
+      summary: Направления, которые система умеет соотнести с корпусом
+      description: |
+        Подсказка для пустого поля ввода. Система знает, какие формулировки распознаёт; аналитик,
+        который этого не видит, гадает, а неудачная догадка стоит ему полного прогона анализа,
+        заканчивающегося оговоркой «направление не распознано».
+
+        Список — подсказка, а не закрытый перечень: свободный ввод остаётся, потому что продукт
+        обязан принимать направления, которых словарь ещё не знает. Именно для них заведена очередь
+        пополнения.
+
+        Пустой список — допустимый ответ: подсказка помогает, но не является условием работы экрана.
+      operationId: listKnownDirections
+      responses:
+        '200':
+          description: Известные формулировки в устойчивом порядке
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { type: string }
+
+  /api/v1/directions/resolve:
+    get:
+      tags: [Research]
+      summary: Понимает ли система эту формулировку — до запуска анализа
+      description: |
+        Тот же вердикт, что стоит в готовом отчёте оговоркой «направление не распознано», но
+        выданный вовремя. Прежде аналитик узнавал его после полутора минут ожидания и списанного
+        слота квоты — и, узнав, оставался с тем же вопросом, что и до запуска: как тогда написать.
+
+        Запрет на запуск отсюда не следует. Список направлений — подсказка, а не закрытый перечень:
+        продукт обязан принимать формулировки, которых словарь ещё не знает, иначе пополнять его
+        будет неоткуда.
+
+        Недоступность движка отвечает `recognized: true` намеренно: вердикта в этом случае нет, а
+        показать «не распознано» значило бы соврать. Сомнение трактуется в пользу аналитика.
+      operationId: resolveDirection
+      parameters:
+        - name: query
+          in: query
+          required: true
+          schema: { type: string, minLength: 1, maxLength: 200 }
+      responses:
+        '200':
+          description: Вердикт и ближайшие известные формулировки
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/DirectionResolution' }
+
+  /api/v1/admin/unrecognized-directions:
+    get:
+      tags: [Admin]
+      summary: Очередь пополнения перекрёстного словаря направлений
+      description: |
+        Формулировки, которых словарь направлений не знает, — сначала те, что спрашивают чаще.
+
+        Отвечает на вопрос, на который до появления журнала нельзя было ответить: чего словарю не
+        хватает на самом деле. Догадка даёт словарь, покрывающий то, о чём подумал автор, и
+        молчащий о том, что спрашивают аналитики.
+
+        Область — организация вызывающего, и берётся она из токена, а не из параметра: перечень
+        направлений, которые исследует банк, — его исследовательская повестка.
+      operationId: listUnrecognizedDirections
+      parameters:
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        '200':
+          description: Очередь пополнения
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/UnrecognizedDirection' }
+
+  /api/v1/saved-domains:
+    get:
+      tags: [SavedDomains]
+      summary: Сохранённые направления
+      operationId: listSavedDomains
+      responses:
+        '200':
+          description: Список
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SavedDomain' }
+    post:
+      tags: [SavedDomains]
+      summary: Сохранить направление
+      operationId: saveDomain
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SaveDomainRequest' }
+      responses:
+        '201':
+          description: Сохранено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SavedDomain' }
+        '409': { $ref: '#/components/responses/ConflictProblem' }
+
+  /api/v1/saved-domains/{id}:
+    delete:
+      tags: [SavedDomains]
+      summary: Удалить сохранённое направление
+      operationId: deleteSavedDomain
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        '204': { description: Удалено }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  # ───────────────────────────── Features ─────────────────────────────
+  /api/v1/features:
+    get:
+      tags: [Features]
+      summary: Какие функции включены в этой сборке
+      description: >-
+        Клиент читает это один раз и скрывает выключенные функции, чтобы выключенная функция не
+        показывала элемент управления, отвечающий 404.
+
+      operationId: listFeatures
+      responses:
+        '200':
+          description: Состояние реестра
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/FeatureFlag' }
+
+  # ────────────────────────────── Sources ─────────────────────────────
+  /api/v1/sources:
+    get:
+      tags: [Sources]
+      summary: Источники данных и их состояние
+      operationId: listSources
+      responses:
+        '200':
+          description: Список источников
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: '#/components/schemas/SourceView' }
+
+  /api/v1/sources/openalex/quota:
+    get:
+      tags: [Sources]
+      summary: Суммарный остаток дневной квоты OpenAlex по настроенным ключам
+      operationId: getOpenAlexQuota
+      responses:
+        '200':
+          description: Сумма по ключам, которые ответили на проверку; сами ключи не возвращаются
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/OpenAlexQuota' }
+
+  /api/v1/sources/{sourceId}:
+    patch:
+      tags: [Sources]
+      summary: Изменить настройки источника
+      description: Требуется роль `RESEARCHER` или `ADMIN`.
+      operationId: updateSource
+      parameters:
+        - { name: sourceId, in: path, required: true, schema: { type: string, maxLength: 48 } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/UpdateSourceRequest' }
+      responses:
+        '200':
+          description: Обновлено
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SourceView' }
+        '404': { $ref: '#/components/responses/NotFoundProblem' }
+
+  /api/v1/sources/{sourceId}/runs:
+    post:
+      tags: [Sources]
+      summary: Запустить прогон сбора вручную
+      operationId: triggerIngestionRun
+      parameters:
+        - { name: sourceId, in: path, required: true, schema: { type: string, maxLength: 48 } }
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/TriggerIngestionRequest' }
+      responses:
+        '202':
+          description: Прогон запущен
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionRunView' }
+        '409':
+          description: Прогон по этому источнику уже выполняется
+          content:
+            application/problem+json:
+              schema: { $ref: '#/components/schemas/Problem' }
+
+  /api/v1/ingestion-runs:
+    get:
+      tags: [Sources]
+      summary: История прогонов сбора
+      operationId: listIngestionRuns
+      parameters:
+        - { name: sourceId, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer, minimum: 0, default: 0 } }
+        - { name: size, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 20 } }
+      responses:
+        '200':
+          description: Страница прогонов
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/IngestionRunPage' }
+
+components:
+  parameters:
+    RequestId:
+      name: requestId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+    ReportId:
+      name: reportId
+      in: path
+      required: true
+      schema: { type: string, format: uuid }
+
+  responses:
+    ValidationProblem:
+      description: Ошибка валидации
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    NotFoundProblem:
+      description: Не найдено
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    ConflictProblem:
+      description: Конфликт состояния
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+    RateLimitProblem:
+      description: Превышен лимит запросов
+      headers:
+        Retry-After:
+          schema: { type: integer }
+      content:
+        application/problem+json:
+          schema: { $ref: '#/components/schemas/Problem' }
+
+  schemas:
+    DirectionResolution:
+      type: object
+      description: |
+        Вердикт по формулировке направления, выданный до запуска анализа.
+      required: [recognized, suggestions]
+      properties:
+        recognized:
+          type: boolean
+          description: |
+            Движок соотнёс формулировку со словарём предметных кодов корпуса. `true` при
+            недоступном движке — вердикта нет, и выдумывать его нельзя.
+        suggestions:
+          type: array
+          items: { type: string }
+          description: |
+            Ближайшие известные формулировки. Пусто, когда ничего похожего нет: подсказка наугад
+            хуже её отсутствия, потому что выглядит как знание.
+      examples:
+        - recognized: false
+          suggestions: ['квантовые вычисления', 'квантовая криптография']
+
+    Problem:
+      type: object
+      description: RFC 9457 Problem Details
+      required: [type, title, status]
+      properties:
+        type: { type: string, format: uri, examples: ['https://horizon.dev/problems/validation-error'] }
+        title: { type: string }
+        status: { type: integer }
+        detail: { type: string }
+        instance: { type: string }
+        traceId: { type: string }
+        timestamp: { type: string, format: date-time }
+        retryable: { type: boolean }
+        errors:
+          type: array
+          items:
+            type: object
+            required: [field, message]
+            properties:
+              field: { type: string }
+              message: { type: string }
+              rejectedValue: {}
+
+    PageMeta:
+      type: object
+      required: [page, size, totalElements, totalPages]
+      properties:
+        page: { type: integer }
+        size: { type: integer }
+        totalElements: { type: integer, format: int64 }
+        totalPages: { type: integer }
+
+    SourceClass:
+      type: string
+      enum: [PREPRINT, JOURNAL_ARTICLE, PATENT, CODE_REPOSITORY, NEWS, ANALYST_REPORT, STANDARD]
+
+    ResearchStatus:
+      type: string
+      enum: [PENDING, COLLECTING, ANALYZING, ASSEMBLING, COMPLETED, FAILED, CANCELLED]
+
+    LifecycleStage:
+      type: string
+      enum: [EMBRYONIC, EMERGING, ACCELERATING, MATURING]
+
+    AnalysisParameters:
+      type: object
+      properties:
+        topN: { type: integer, minimum: 5, maximum: 50, default: 15 }
+        yearsWindow: { type: integer, minimum: 3, maximum: 15, default: 7 }
+        sourceClasses:
+          type: array
+          items: { $ref: '#/components/schemas/SourceClass' }
+          description: 'Пустой список — все доступные классы'
+        minConfidence: { type: number, minimum: 0, maximum: 1, default: 0 }
+        includeMature: { type: boolean, default: false }
+        mode:
+          type: string
+          enum: [fast, quality]
+          default: fast
+          description: >-
+            Режим анализа. `fast` — ответ за 20 минут (SLA ТЗ): глубокое исследование получает
+            5,5 минуты. `quality` — до 30–40 минут: глубокое исследование читает втрое больше
+            страниц за 20 минут, дедлайн запроса — 40 минут.
+
+
+            Часть идентичности вопроса: быстрый и качественный ответы на одно направление — два
+            разных ответа, и готовый отчёт одного режима не переиспользуется как ответ другого.
+            Незнакомое имя — 400 с перечнем известных.
+
+    SubmitResearchRequest:
+      type: object
+      required: [query]
+      properties:
+        query:
+          type: string
+          minLength: 3
+          maxLength: 200
+          examples: ['технологии в искусственном интеллекте']
+        parameters: { $ref: '#/components/schemas/AnalysisParameters' }
+        refresh:
+          type: boolean
+          default: false
+          description: >-
+            Считать заново, не переиспользуя готовый отчёт. Пропускается **только** проверка
+            свежести: `Idempotency-Key` по-прежнему схлопывает двойной клик, идущий анализ
+            по-прежнему возвращается вместо второго запуска, квота по-прежнему списывается —
+            пересчёт это заказ настоящей работы, а не освобождение от платы за неё.
+
+
+            По умолчанию выключено: значение по умолчанию, которое считает заново, превратило бы
+            каждый обычный вопрос в полный анализ.
+
+    AnalysisProgress:
+      type: object
+      required: [stage, percent]
+      properties:
+        stage:
+          type: string
+          enum: [QUEUED, COLLECTING, ANALYZING, ASSEMBLING, DONE]
+        percent: { type: integer, minimum: 0, maximum: 100 }
+        message: { type: string }
+        updatedAt: { type: string, format: date-time }
+
+    FailureInfo:
+      type: object
+      required: [code, message, retryable]
+      properties:
+        code: { type: string, examples: ['SAGA_TIMEOUT', 'NO_DOCUMENTS_FOUND', 'ANALYSIS_FAILED'] }
+        message: { type: string }
+        retryable: { type: boolean }
+
+    ResearchRequestView:
+      type: object
+      required: [id, query, parameters, status, progress, submittedAt]
+      properties:
+        id: { type: string, format: uuid }
+        query: { type: string }
+        normalizedQuery: { type: string }
+        parameters: { $ref: '#/components/schemas/AnalysisParameters' }
+        status: { $ref: '#/components/schemas/ResearchStatus' }
+        progress: { $ref: '#/components/schemas/AnalysisProgress' }
+        reportId: { type: [string, 'null'], format: uuid }
+        partial: { type: boolean, default: false }
+        requestedBy:
+          type: string
+          format: uuid
+          description: >-
+            Кто запустил запрос. Идентификатор, а не имя: имя принадлежит контексту учётных записей,
+            и копия здесь устарела бы при первом переименовании — клиент разрешает его по справочнику
+            организации.
+
+
+            Приходит только в списке, как и `mine`. Если справочник недоступен, остаётся `mine`,
+            которого достаточно, чтобы список работал.
+        mine:
+          type: boolean
+          description: >-
+            Запустил ли этот запрос тот, кто смотрит. Приходит только в списке: у одного запроса
+            вопрос «чей он» не стоит — туда приходят по ссылке на конкретный расчёт.
+
+
+            Имени автора здесь нет намеренно: оно живёт в контексте учётных записей, и копия здесь
+            устарела бы при первом же переименовании. Система утверждает ровно то, что знает сама.
+        fromCache:
+          type: boolean
+          default: false
+          description: >-
+            Новой работы не начато. Один бит на три разных случая, поэтому рядом едет `outcome`.
+        outcome:
+          type: string
+          description: >-
+            Чем закончилась отправка. `accepted` — запущен новый анализ (ответ 202).
+            `already-running` — по этому направлению у вас уже шёл расчёт, он и возвращён; второй
+            не запущен и квота не списана. `reused` — переиспользован готовый отчёт.
+            `idempotent-replay` — сработал `Idempotency-Key`.
+
+
+            Есть только в ответе на отправку: при чтении запроса отправки не было, и поле опущено.
+            Строка, а не закрытый enum, по той же причине, что и у исхода пересчёта.
+        failure: { $ref: '#/components/schemas/FailureInfo' }
+        submittedAt: { type: string, format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+        etaSeconds: { type: [integer, 'null'] }
+
+    ResearchRequestPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items: { $ref: '#/components/schemas/ResearchRequestView' }
+
+    IndicatorScore:
+      type: object
+      required: [name, value, weight, multiplier, shortfallShare]
+      description: |
+        Вклад одного индикатора. `multiplier = value^weight`; итоговый балл = 100 × произведение множителей.
+        `shortfallShare` — нормированная доля «недобора» (что сильнее всего ограничивает балл).
+      properties:
+        name:
+          type: string
+          enum: [novelty, growth, diffusion, weakness, coherence, impact]
+        value: { type: number, minimum: 0, maximum: 1 }
+        weight: { type: number, minimum: 0, maximum: 1 }
+        multiplier: { type: number, minimum: 0, maximum: 1 }
+        shortfallShare: { type: number, minimum: 0, maximum: 1 }
+        explanation: { type: string, description: 'Человекочитаемое пояснение с фактическими числами' }
+        diagnostics:
+          type: object
+          additionalProperties: true
+          description: 'Сырые величины: наклон регрессии, число организаций, энтропия и т. п.'
+
+    EmergenceAssessment:
+      type: object
+      required: [score, confidence, lowEvidence, indicators]
+      properties:
+        score: { type: number, minimum: 0, maximum: 100 }
+        confidence: { type: number, minimum: 0, maximum: 1 }
+        lowEvidence: { type: boolean }
+        indicators:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/IndicatorScore' }
+        rankStability: { $ref: '#/components/schemas/RankStability' }
+
+    RankStability:
+      type: object
+      required: [best, worst]
+      description: |
+        Лучшее и худшее место темы при разумных изменениях весов индикаторов (методология §16).
+
+        Веса шести индикаторов выбраны экспертно, и без этого диапазона утверждение «тема третья»
+        неотличимо от следствия того, как взвесили. Отсутствие поля означает «устойчивость не
+        измерялась» — так приходят отчёты, выпущенные до появления проверки, — а не «неустойчиво».
+      properties:
+        best: { type: integer, minimum: 1 }
+        worst: { type: integer, minimum: 1 }
+
+    TimelinePoint:
+      type: object
+      required: [period, documentCount]
+      properties:
+        period: { type: string, examples: ['2024', '2024-Q3'] }
+        documentCount: { type: integer, minimum: 0 }
+        dov: { type: number, description: 'Degree of Visibility (Yoon 2012)' }
+        dod: { type: number, description: 'Degree of Diffusion (Yoon 2012)' }
+
+    Evidence:
+      type: object
+      required: [sourceId, sourceClass, title, publishedOn, url]
+      properties:
+        sourceId: { type: string }
+        sourceClass: { $ref: '#/components/schemas/SourceClass' }
+        externalId: { type: string }
+        title: { type: string }
+        authors: { type: string }
+        organization: { type: string }
+        organizationCountry: { type: string, maxLength: 2 }
+        publishedOn: { type: string, format: date }
+        url: { type: string, format: uri }
+        doi: { type: string }
+        citationCount: { type: [integer, 'null'] }
+        relevance: { type: number, minimum: 0, maximum: 1 }
+        snippet: { type: string }
+        language:
+          type: string
+          maxLength: 2
+          description: >-
+            Язык оригинала, ISO 639-1. ТЗ требует показывать его у каждого источника, и требование
+            содержательное: русскоязычное резюме зарубежного материала имеет смысл только вместе с
+            указанием, с какого языка оно сделано. Отсутствует, когда источник языка не сообщил.
+        credibility:
+          type: string
+          enum: [HIGH, MEDIUM, LOW]
+          default: MEDIUM
+          description: >-
+            Уровень доверенности источника — требование ТЗ к отображению каждого источника.
+            Выводится движком от класса источника и хоста ссылки: официальный домен ведомства или
+            университета сильнее класса в обе стороны, служба распространения пресс-релизов —
+            слабее. `MEDIUM` у отчётов, выпущенных до появления поля.
+        credibilityBasis:
+          type: string
+          maxLength: 200
+          description: >-
+            Правило, присвоившее уровень, словами. ТЗ допускает показывать «уровень доверенности
+            либо критерии его определения» — показываются оба: ярлык без основания читатель
+            проверить не может, а проверяемость утверждений и есть то, чем продукт отличается от
+            списка слов.
+        independent:
+          type: boolean
+          default: true
+          description: >-
+            Самостоятельное ли это свидетельство. `false` у перепечаток пресс-релизов, соцсетей и
+            личных площадок: десять сайтов, перепечатавших один релиз, — один источник, а не десять.
+
+    Localization:
+      type: object
+      description: |
+        Русский слой карточки: перевод **рядом** с оригиналом, а не вместо него.
+
+        ТЗ требует двух вещей одновременно: «вся аналитическая выдача должна быть представлена на
+        русском языке» и «для зарубежного материала … сохранив оригинальное название, ссылку, дату
+        публикации и язык источника». Поэтому русская строка дополняет, а не заменяет: аналитик,
+        который пойдёт проверять источник, обязан искать в нём то слово, которое там написано.
+
+        Модель называется и вид обработки различается — тоже по ТЗ: «при использовании
+        автоматического перевода или генеративного резюме это должно быть отмечено возле
+        источника». Перевод названия и пересказ абстракта имеют разную надёжность.
+
+        Отсутствует, когда сервис моделей был выключен или недоступен: отчёт при этом полон и
+        верен — он просто по-английски.
+      properties:
+        title: { type: string, maxLength: 300 }
+        titleModel:
+          type: string
+          maxLength: 80
+          description: 'Модель, переведшая название (раскрытие по ТЗ §3.1)'
+        titleMode:
+          type: string
+          enum: [MACHINE, GENERATIVE]
+          description: 'Вид обработки: автоматический перевод или генеративный пересказ'
+        definition: { type: string }
+        problem: { type: string }
+        benefit: { type: string }
+        evidenceTitles:
+          type: array
+          items: { type: string }
+          description: 'Русские названия источников по порядку элементов evidence'
+        textModel: { type: string, maxLength: 80 }
+        textMode: { type: string, enum: [MACHINE, GENERATIVE] }
+        statement:
+          type: string
+          maxLength: 600
+          description: >-
+            Тема, сформулированная как тренд: одно русское предложение о том, что меняется и в
+            какую сторону. Термин из двух-четырёх слов отвечает на вопрос «о чём», предложение —
+            «что происходит». Всегда генеративный пересказ фрагментов источников темы и её ряда по
+            годам; предложение с числом, которого нет во входе, отбрасывается. Отсутствует, когда
+            модель не ответила или ответ не прошёл проверку.
+        statementModel:
+          type: string
+          maxLength: 80
+          description: 'Модель, сформулировавшая тренд (раскрытие по ТЗ §3.1)'
+
+    Motivation:
+      type: object
+      required: [problem, benefit]
+      description: 'Мотивация тренда: какую проблему решает и какое преимущество даёт'
+      properties:
+        problem: { type: string }
+        benefit: { type: string }
+        attributions:
+          type: array
+          description: 'Индексы элементов evidence, из которых извлечены формулировки'
+          items:
+            type: object
+            required: [statement, evidenceIndex]
+            properties:
+              statement: { type: string, enum: [problem, benefit] }
+              evidenceIndex: { type: integer, minimum: 0 }
+              sentence:
+                type: string
+                description: >-
+                  Предложение, взятое именно из этого документа. Формулировка склеивается из
+                  предложений разных статей, и без привязки к предложению ссылка указывает на абзац
+                  целиком. Отсутствует у отчётов, выпущенных до появления поля.
+
+    CaseExample:
+      type: object
+      required: [organization, evidenceIndex]
+      properties:
+        organization: { type: string }
+        organizationType:
+          type: string
+          enum: [COMPANY, UNIVERSITY, RESEARCH_INSTITUTE, GOVERNMENT, NONPROFIT]
+        country: { type: string, maxLength: 2 }
+        summary: { type: string }
+        evidenceIndex: { type: integer, minimum: 0 }
+        basis:
+          type: string
+          description: >-
+            Какое из трёх правил методологии §8 подобрало пример. Патент означает, что организация
+            закрепила право на применение; публикация — что она над темой работает, и внедрение из
+            этого не следует. Отсутствует у отчётов, выпущенных до появления поля.
+          enum: [PATENT, CORPORATE_PUBLICATION, ACADEMIC_GROUP]
+
+    RankedTrend:
+      type: object
+      required:
+        [rank, trendKey, title, definition, motivation, assessment,
+         lifecycleStage, firstMentionYear, totalDocuments, timeline, evidence]
+      properties:
+        rank: { type: integer, minimum: 1 }
+        trendKey: { type: string, maxLength: 160 }
+        title: { type: string, maxLength: 200 }
+        definition: { type: string }
+        motivation: { $ref: '#/components/schemas/Motivation' }
+        caseExample: { $ref: '#/components/schemas/CaseExample' }
+        assessment: { $ref: '#/components/schemas/EmergenceAssessment' }
+        directionShare:
+          type: number
+          minimum: 0
+          maximum: 1
+          description: |
+            Доля документов темы, отнесённых источниками к направлению отчёта.
+
+            Величина, на которой держится отбор темы в отчёт. У настоящих тем направления она около
+            двух третей; тема с седьмой частью попадает в отчёт потому, что для узкого направления
+            планка опускается почти до нуля. Статистика их не разделяет — человек разделяет сразу,
+            если величину показать. Отсутствует, когда отбор шёл не по предметным кодам.
+        lifecycleStage: { $ref: '#/components/schemas/LifecycleStage' }
+        firstMentionYear:
+          type: integer
+          minimum: 1900
+          maximum: 2100
+          description: >-
+            Первый достоверный год темы по BRULE-2: не меньше двух документов из не меньше чем двух
+            организаций. Это не год первого упоминания вообще — одиночные упоминания бывают раньше:
+            по эталонному корпусу у 71 темы из 90, у 21 на два года и больше. Имя поля оставлено
+            прежним намеренно: переименование сломало бы потребителей ради названия, а различие
+            несут это описание и все подписи в интерфейсе.
+        totalDocuments: { type: integer, minimum: 1 }
+        burst:
+          type: object
+          properties:
+            startPeriod: { type: [string, 'null'] }
+            weight: { type: [number, 'null'] }
+        timeline:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/TimelinePoint' }
+        evidence:
+          type: array
+          minItems: 1
+          items: { $ref: '#/components/schemas/Evidence' }
+        lowCredibilityOnly:
+          type: boolean
+          default: false
+          description: >-
+            Все источники темы низкой доверенности. ТЗ: такие сведения «не должны быть единственным
+            основанием для включения технологии в итоговую выдачу… либо сопровождаться отметкой о
+            пониженной доверенности». Первую половину закрывает правило движка, отсекающее тему без
+            научно-технической основы вовсе; вторую — эта отметка.
+        localization: { $ref: '#/components/schemas/Localization' }
+        explanation:
+          type: array
+          maxItems: 8
+          description: >-
+            Почему тема — слабый сигнал и почему у неё такая уверенность: строки «заголовок —
+            пояснение», собранные движком из голосов экспертной стадии, вкладов в балл, расчёта
+            уверенности и источников карточки. Пусто у отчётов, выпущенных до появления объяснения.
+          items: { $ref: '#/components/schemas/ExplanationItem' }
+        feedback: { $ref: '#/components/schemas/TrendFeedbackView' }
+
+    ExplanationItem:
+      type: object
+      required: [title, text]
+      properties:
+        title: { type: string, maxLength: 80 }
+        text: { type: string, maxLength: 1200 }
+
+    UnrecognizedDirection:
+      type: object
+      required: [query, normalizedQuery, occurrences, hadAWayOut, firstSeen, lastSeen]
+      properties:
+        query: { type: string, description: 'Формулировка так, как её набрал аналитик' }
+        normalizedQuery: { type: string, description: 'Ключ слияния — «ИИ» и «ии» одна задача, а не две' }
+        occurrences: { type: integer, minimum: 1 }
+        suggestions:
+          type: array
+          items: { type: string }
+          description: Что предлагалось в последний раз
+        hadAWayOut:
+          type: boolean
+          description: |
+            Показала ли система выход. Формулировка, от которой до известной статьи один щелчок,
+            стоит куратору минуты; формулировка, на которую не предложено ничего, — это направление,
+            о котором продукт не знает вовсе, и разбирать её надо первой.
+        firstSeen: { type: string, format: date-time }
+        lastSeen: { type: string, format: date-time }
+
+    Coverage:
+      type: object
+      required: [documentsAnalyzed, sourcesUsed, partial]
+      properties:
+        documentsAnalyzed: { type: integer }
+        candidatesEvaluated: { type: integer }
+        sourcesUsed: { type: array, items: { type: string } }
+        unavailableSources: { type: array, items: { type: string } }
+        partial: { type: boolean }
+        # Оговорка того же рода, что partial, но о другом отказе. partial говорит «мы нашли
+        # меньше, чем хотели»; это поле — «мы не поняли вопроса»: движок не соотнёс запрошенное
+        # направление со словарём предметных кодов, которым размечен корпус, и выбор тем не
+        # зависит от заданного вопроса. Отчёт при этом полон, посчитан и правдоподобен.
+        # Необязательное: отчёты, выпущенные до появления поля, читаются как распознанные —
+        # оговорка, срабатывающая не по делу, обесценивает настоящие.
+        directionRecognized: { type: boolean, default: true }
+        # Непусто только при directionRecognized=false. Без подсказки красная плашка «направление
+        # не распознано» — тупик: разница между работающим продуктом и бесполезным здесь часто в
+        # одном слове, которое аналитику неоткуда узнать.
+        directionSuggestions:
+          type: array
+          maxItems: 3
+          items: { type: string }
+        # Сколько тем скрыто по пометке аналитика «это не технология». Отбор происходит до ТОП-N,
+        # поэтому освободившееся место занял следующий кандидат — и без этого числа отчёт выглядел
+        # бы так, будто скрытого не было вовсе. Молчаливый фильтр производит уверенность вместо
+        # сведений: аналитик обязан видеть, что список неполон по его же решению.
+        suppressedByAnalyst: { type: integer, minimum: 0, default: 0 }
+        # Корпус обрезан пределом профиля до анализа: часть литературы направления не
+        # рассматривалась вовсе. Отличается от partial («источник был недоступен») и от «тем найдено
+        # меньше запрошенных» («методология столько и нашла»): три разные причины неполноты, и
+        # читателю они говорят разное.
+        corpusTruncated: { type: boolean, default: false }
+        # Четвёртая оговорка того же рода, и ТЗ требует её прямо: «в веб-интерфейсе должны
+        # отображаться … причины исключения зрелых технологий или нерелевантных кандидатов при
+        # наличии такой информации», и отдельно — «должна быть продемонстрирована логика исключения
+        # зрелых трендов, массово внедренных технологий, отраслевых стандартов, маркетингового хайпа
+        # и информационного шума». Примеры идут вместе со счётчиком: число без имён проверить
+        # нельзя — «отсеяно 2400 кандидатов» одинаково читается и там, где отсеяли мусор, и там,
+        # где отсеяли тему, которую аналитик искал.
+        exclusions:
+          type: array
+          items:
+            type: object
+            required: [code, reason, count]
+            properties:
+              code:
+                type: string
+                description: 'Стадия конвейера, она же код причины'
+              reason:
+                type: string
+                description: 'Формулировка для читателя, по-русски'
+              count: { type: integer, minimum: 1 }
+              examples:
+                type: array
+                maxItems: 5
+                items: { type: string }
+        windowFrom: { type: string, format: date }
+        windowTo: { type: string, format: date }
+
+    TrendReport:
+      type: object
+      required:
+        [id, researchRequestId, version, query, methodologyVersion,
+         corpusSnapshotId, coverage, trends, generatedAt]
+      properties:
+        id: { type: string, format: uuid }
+        researchRequestId: { type: string, format: uuid }
+        version: { type: integer, minimum: 1 }
+        previousVersionId: { type: [string, 'null'], format: uuid }
+        query: { type: string }
+        normalizedQuery: { type: string }
+        methodologyVersion: { type: string, examples: ['em-1.0.0'] }
+        methodologyProfileId: { type: string, format: uuid }
+        scoreAggregator: { type: string, examples: ['WEIGHTED_GEOMETRIC'] }
+        # Чем посчитан отчёт. Движок методологии выведен из продукта; `methodology` остаётся
+        # подписью отчётов, выпущенных до этого, и отсутствие значения у самых старых из них
+        # читается так же.
+        engine: { type: string, enum: [methodology, signals], default: methodology }
+        mode: { type: string, enum: [fast, quality], default: fast }
+        corpusSnapshotId: { type: string, format: uuid }
+        coverage: { $ref: '#/components/schemas/Coverage' }
+        truncated: { type: boolean, default: false }
+        # Темы, скрытые из отчёта по пометке смотрящего. Число скрытого лежит в coverage и приходит
+        # от движка, имена — отсюда: обратная связь хранит только ключ, а ключ стеммирован
+        # («retriev passage»), и показывать аналитику его же решение в таком виде значит требовать
+        # расшифровки. Список зависит от смотрящего и поэтому не входит в сам отчёт: он неизменяем
+        # и общий, у коллеги с другими пометками скрыто другое.
+        hiddenTopics:
+          type: array
+          items:
+            type: object
+            required: [trendKey, title]
+            properties:
+              trendKey: { type: string }
+              title: { type: string }
+        portrait:
+          $ref: '#/components/schemas/DirectionPortrait'
+        trends:
+          type: array
+          items: { $ref: '#/components/schemas/RankedTrend' }
+        generatedAt: { type: string, format: date-time }
+
+    TrendFeedbackRequest:
+      type: object
+      required: [verdict]
+      properties:
+        verdict: { type: string, enum: [RELEVANT, NOISE, ALREADY_KNOWN] }
+        comment: { type: string, maxLength: 2000 }
+
+    TrendFeedbackView:
+      type: object
+      required: [verdict, createdAt]
+      properties:
+        verdict: { type: string, enum: [RELEVANT, NOISE, ALREADY_KNOWN] }
+        comment: { type: string }
+        createdAt: { type: string, format: date-time }
+        carried:
+          type: boolean
+          default: false
+          description: >-
+            Оценка дана не в этом отчёте, а в другом по тому же направлению — как правило, в более
+            ранней версии, ради которой перенос и сделан: отчёты неизменяемы, пересчёт создаёт новый,
+            и без переноса разметка аналитика пропадала бы каждый квартал. Ограничения «строго
+            раньше» намеренно нет: сказано ровно то, что проверено, — это другой отчёт того же
+            направления.
+
+
+            Помечена как перенесённая, а не выдана за здешнюю: поставленная продуктом от имени
+            аналитика пометка неотличима от его собственной, и он нашёл бы своё имя под суждением,
+            которого не высказывал. Подтверждается обычным `PUT`.
+
+    SaveDomainRequest:
+      type: object
+      required: [query]
+      properties:
+        query: { type: string, minLength: 3, maxLength: 200 }
+        parameters: { $ref: '#/components/schemas/AnalysisParameters' }
+
+    SavedDomain:
+      type: object
+      required: [id, query, createdAt]
+      properties:
+        id: { type: string, format: uuid }
+        query: { type: string }
+        normalizedQuery: { type: string }
+        parameters: { $ref: '#/components/schemas/AnalysisParameters' }
+        lastReportId: { type: [string, 'null'], format: uuid }
+        createdAt: { type: string, format: date-time }
+
+    RadarRefresh:
+      type: object
+      required: [savedDomainId, query, outcome]
+      properties:
+        savedDomainId: { type: string, format: uuid }
+        query: { type: string }
+        outcome:
+          type: string
+          description: >-
+            `accepted` — поставлено в очередь. `already-running` — анализ по этому направлению уже
+            идёт, второй не запущен и квота не списана. `quota-exceeded` — часовой лимит исчерпан.
+            `failed` — отказ по собственной причине направления.
+
+
+            Исхода «переиспользован готовый результат» здесь нет: пакетный пересчёт принудителен —
+            кнопка заводилась ради обновления, и отвечать «уже свежее» на все направления сразу
+            значит не делать ничего. Каждое направление расходует слот квоты.
+
+
+            Строка, а не закрытый enum: исход показывается пользователю, и появление нового не
+            должно ломать уже собранных клиентов.
+        requestId:
+          type: string
+          format: uuid
+          description: >-
+            Есть для `accepted` и `already-running` — по нему клиент следит за анализом.
+        reason:
+          type: string
+          description: Заполнено для `quota-exceeded` и `failed`.
+
+    Quota:
+      type: object
+      required: [known]
+      properties:
+        known:
+          type: boolean
+          description: Удалось ли прочитать счётчик. При `false` остальные поля отсутствуют.
+        remaining:
+          type: integer
+          description: >-
+            Меньший из двух остатков — тот, что кончится раньше, и есть тот, что остановит аналитика.
+        userRemaining: { type: integer }
+        userLimit: { type: integer }
+        organizationRemaining:
+          type: integer
+          description: Общий с коллегами.
+        organizationLimit: { type: integer }
+
+    TopicSearchResult:
+      type: object
+      required: [topics, totalTopics, totalOccurrences, truncated]
+      properties:
+        topics:
+          type: array
+          items: { $ref: '#/components/schemas/FoundTopic' }
+        totalTopics:
+          type: integer
+          description: >-
+            Сколько тем нашлось всего. Знаменатель для показанных: без него «найдено 25» выдавало бы
+            показанное за найденное, и сорок первая тема исчезала бы бесследно.
+        totalOccurrences:
+          type: integer
+          description: >-
+            Сколько вхождений просмотрено. Не размер корпуса: само это число упирается в предел
+            выборки, поэтому отвечает на вопрос «сколько мы посмотрели», а не «сколько их есть».
+        truncated:
+          type: boolean
+          description: Упёрлись ли в предел выборки строк
+
+    FoundTopic:
+      type: object
+      required: [trendKey, title, directions, bestRank, occurrences, hiddenOccurrences]
+      properties:
+        trendKey: { type: string }
+        title:
+          type: string
+          description: >-
+            Название из самого свежего вхождения: тема могла быть переименована между версиями, и
+            старое имя было бы ответом про прошлое.
+        directions:
+          type: integer
+          description: >-
+            В скольких разных направлениях тема встретилась. Главный признак силы: в одном — 
+            наблюдение, в двух несмежных — конвергенция.
+        bestRank:
+          type: integer
+          description: Лучшее (наименьшее) место темы среди её вхождений
+        occurrences:
+          type: array
+          items: { $ref: '#/components/schemas/TopicOccurrence' }
+        hiddenOccurrences:
+          type: integer
+          description: Сколько вхождений не показано; ноль, если показаны все
+
+    TopicOccurrence:
+      type: object
+      required: [reportId, version, query, rank, generatedAt]
+      properties:
+        reportId: { type: string, format: uuid }
+        version: { type: integer }
+        query:
+          type: string
+          description: Формулировка направления, как её написал человек
+        rank: { type: integer }
+        generatedAt: { type: string, format: date-time }
+
+    DirectionOverlap:
+      type: object
+      required: [topics, directionsCompared, directionsSkipped]
+      properties:
+        topics:
+          type: array
+          items: { $ref: '#/components/schemas/SharedTopic' }
+        directionsCompared:
+          type: integer
+          description: Сколько направлений участвовало — то есть имеет отчёт.
+        directionsSkipped:
+          type: integer
+          description: >-
+            Сколько отслеживаемых направлений не участвовало, потому что анализ по ним не
+            запускался. Названо числом, а не молчанием: иначе «пересечений нет» читалось бы как
+            утверждение о предметной области.
+
+    SharedTopic:
+      type: object
+      required: [trendKey, title, appearances]
+      properties:
+        trendKey:
+          type: string
+          description: >-
+            Идентичность темы по методологии — тот же ключ, что у обратной связи, дельты и
+            трассировки. Сопоставление идёт по нему, а не по заголовку.
+        title:
+          type: string
+          description: Заголовок из того направления, где тема стоит выше всего.
+        appearances:
+          type: array
+          minItems: 2
+          items: { $ref: '#/components/schemas/TopicAppearance' }
+
+    TopicAppearance:
+      type: object
+      required: [savedDomainId, query, reportId, rank]
+      properties:
+        savedDomainId: { type: string, format: uuid }
+        query: { type: string }
+        reportId: { type: string, format: uuid }
+        rank:
+          type: integer
+          description: >-
+            Место темы в этом направлении. Вторая позиция в одном и пятнадцатая в другом — другое
+            утверждение, чем «есть в обоих».
+
+    RadarDigest:
+      type: object
+      required: [savedDomainId, query, entered, left, headline]
+      properties:
+        savedDomainId: { type: string, format: uuid }
+        query: { type: string }
+        reportId:
+          type: string
+          format: uuid
+          description: Отсутствует, если по направлению ещё не было анализа.
+        portrait:
+          $ref: '#/components/schemas/DirectionPortrait'
+        entered:
+          type: integer
+          description: Сколько тем не было в предыдущей версии отчёта.
+        left:
+          type: integer
+          description: Сколько тем выбыло из ТОП.
+        headline:
+          type: array
+          description: Первые темы отчёта — чтобы узнать направление, не открывая его.
+          items: { type: string }
+        analysedAt: { type: string, format: date-time }
+        reportUnavailable:
+          type: boolean
+          default: false
+          description: >-
+            Отчёт этого направления недоступен смотрящему — например, его запускал коллега, а
+            аналитик вышел из организации. Отличается от «ни разу не анализировали», где отсутствует
+            reportId: там анализа не было, здесь он был, а прав на чтение больше нет. Строка при этом
+            остаётся: исчезнув, она оставила бы аналитика гадать, сохранял ли он направление вообще.
+        seenAt:
+          type: string
+          format: date-time
+          description: >-
+            Когда вы в последний раз открывали это направление. Отсутствует, если ни разу — и тогда
+            направление **не** считается непросмотренным: иначе новичок открыл бы радар и увидел
+            двадцать «новых» строк, среди которых нет ни одной новости.
+
+
+            Отдаётся момент, а не готовый флаг: сравнение с `analysedAt` — одна операция, а флаг
+            сервер не смог бы посчитать, не спросив о текущем времени.
+
+    FeatureFlag:
+      type: object
+      required: [key, title, enabled]
+      properties:
+        key:
+          type: string
+          description: Стабильный идентификатор — он же ключ конфигурации и в интерфейсе.
+        title: { type: string }
+        description:
+          type: string
+          description: Что именно исчезнет — решение принимают по эффекту, а не по имени.
+        enabled: { type: boolean }
+        source:
+          type: string
+          description: >-
+            `default` — применено объявленное умолчание, `override` — значение задано конфигурацией.
+            При разборе инцидента это разница между «кто-то выключил» и «никогда не включалось».
+
+    DirectionPortrait:
+      type: object
+      description: >-
+        Направление в тех немногих величинах, за которые аналитику отвечать вслух. Всё выведено из
+        самого отчёта; сгенерированных утверждений здесь нет намеренно — фразу «поле бурно растёт»
+        нельзя проверить, а сводка существует для того, чтобы её повторил тот, с кого спросят.
+
+
+        Оговорки (`lowEvidenceCount`, `unavailableSources`) — обязательные поля, а не приложение:
+        оговорка, которую можно не прислать, не будет прислана ровно тогда, когда она важна.
+      required: [trendsInReport, candidatesEvaluated, lowEvidenceCount, byLifecycleStage, windowFrom, windowTo, sourcesUsed, unavailableSources, partial]
+      properties:
+        trendsInReport: { type: integer }
+        candidatesEvaluated:
+          type: integer
+          description: Сколько кандидатов дошло до оценки. «15 из 4000» и «15 из 18» — разные утверждения.
+        lowEvidenceCount:
+          type: integer
+          description: Сколько тем в ТОП держится на тонкой доказательной базе.
+        medianFirstMentionYear:
+          type: [integer, 'null']
+          description: >-
+            Медиана, а не среднее: одна тема 1998 года сдвинула бы среднее на годы и не описала бы
+            ни одной реальной темы. null для пустого отчёта.
+        byLifecycleStage:
+          type: array
+          description: >-
+            Все стадии методологии в её собственном порядке, включая нулевые: отсутствие строки
+            «зрелые: 0» читается как «не считали», а порядок по величине менялся бы между отчётами.
+          items:
+            type: object
+            required: [stage, count]
+            properties:
+              stage: { type: string }
+              count: { type: integer }
+        windowFrom: { type: string, format: date }
+        windowTo: { type: string, format: date }
+        sourcesUsed:
+          type: array
+          items: { type: string }
+        unavailableSources:
+          type: array
+          description: Чего в выводе заведомо нет.
+          items: { type: string }
+        partial: { type: boolean }
+        directionRecognized: { type: boolean, default: true }
+
+    ReportDelta:
+      type: object
+      required: [entered, left, stayed]
+      properties:
+        previousReportId:
+          type: string
+          format: uuid
+          description: Отчёт, с которым сравнивали. Отсутствует, если сравнение не выполнялось.
+        previousVersion: { type: integer }
+        entered:
+          type: array
+          description: Темы, которых не было в предыдущей версии. Порядок — по рангу в текущей.
+          items: { $ref: '#/components/schemas/ReportDeltaEntry' }
+        left:
+          type: array
+          description: Темы, выбывшие из ТОП. Порядок — по рангу в предыдущей версии.
+          items: { $ref: '#/components/schemas/ReportDeltaEntry' }
+        stayed:
+          type: array
+          description: >-
+            Темы, присутствующие в обеих версиях. Порядок — по росту в ранге, то есть ускорившиеся
+            первыми.
+          items: { $ref: '#/components/schemas/ReportDeltaEntry' }
+        unavailableReason:
+          type: string
+          description: >-
+            Заполнено ровно тогда, когда сравнение не выполнялось, и является частью контракта, а не
+            пустым ответом: пустые группы читаются как «ничего не изменилось» — содержательное
+            утверждение, противоположное «сравнить не с чем» и «сравнивать нельзя».
+
+
+            `no-previous-version` — это первая версия отчёта.
+            `methodology-changed` — версия методологии изменилась между запусками, и разность баллов
+            была бы изменением линейки, а не мира.
+
+
+            Тип — строка, а не закрытый enum, намеренно: причина показывается пользователю, и
+            появление новой не должно ломать уже собранных клиентов. Так же сделаны `stage` и
+            `outcome` в `TermExplanation`.
+
+    ReportDeltaEntry:
+      type: object
+      required: [trendKey, title, rank, score]
+      properties:
+        trendKey: { type: string }
+        title: { type: string }
+        rank:
+          type: integer
+          description: Позиция в той версии, где тема присутствует.
+        rankChange:
+          type: [integer, 'null']
+          description: >-
+            На сколько позиций тема поднялась (`ранг_прежний − ранг_текущий`), поэтому
+            положительное значение читается как «выросла», хотя ранг считается вниз. Отсутствует
+            для тем, представленных лишь в одной версии: прежнего ранга нет, а ноль читался бы как
+            «удержала позицию».
+        score: { type: number }
+        scoreChange:
+          type: [number, 'null']
+          description: Изменение балла со знаком; отсутствует при том же условии.
+
+    TermExplanationPending:
+      type: object
+      description: Трассировка ещё считается; ответ будет по тому же адресу.
+      required: [state, retryAfterSeconds]
+      additionalProperties: false
+      properties:
+        state:
+          type: string
+          enum: [RUNNING]
+        retryAfterSeconds:
+          type: integer
+          minimum: 1
+          description: Через сколько секунд спросить снова; то же, что в заголовке `Retry-After`.
+
+    TermExplanation:
+      type: object
+      required: [stages, traces]
+      properties:
+        stages:
+          type: array
+          description: >-
+            Все стадии конвейера по порядку, как их называет движок. Клиент рисует путь термина по
+            этому списку, а не по своей копии: копия молча отстала бы в тот день, когда в конвейере
+            появится новая стадия, и продолжила бы выглядеть правильной.
+          items: { type: string }
+        traces:
+          type: array
+          items:
+            type: object
+            required: [term, stage, outcome, inReport]
+            properties:
+              term:
+                type: string
+                description: Термин в том виде, в каком его ключевал движок.
+              canonicalTerm:
+                # 3.1 выражает «может быть null» типом-объединением; `nullable` — синтаксис 3.0,
+                # и валидатор 3.1 его не признаёт. Смысл тот же, запись другая.
+                type: [string, 'null']
+                description: Термин, в который этот был слит при объединении синонимов.
+              stage:
+                type: string
+                description: Последняя достигнутая стадия.
+              outcome: { type: string }
+              reason:
+                type: [string, 'null']
+                description: Причина отказа словами, с которыми аналитик может что-то сделать.
+              detail:
+                type: object
+                additionalProperties: true
+                description: Числа, решившие исход — пороги и измеренные значения.
+              inReport:
+                type: boolean
+                description: Дошёл ли термин до отчёта.
+
+    SourceView:
+      type: object
+      required: [id, displayName, sourceClass, enabled]
+      properties:
+        id: { type: string }
+        displayName: { type: string }
+        sourceClass: { $ref: '#/components/schemas/SourceClass' }
+        enabled: { type: boolean }
+        requiresApiKey: { type: boolean }
+        apiKeyConfigured: { type: boolean }
+        rateLimitPerMinute: { type: integer }
+        documentCount: { type: integer, format: int64 }
+        lastRun: { $ref: '#/components/schemas/IngestionRunView' }
+
+    OpenAlexQuota:
+      type: object
+      required: [remainingCredits, limitCredits, keysConfigured, keysChecked, checkedAt]
+      properties:
+        remainingCredits: { type: integer, format: int64, minimum: 0 }
+        limitCredits: { type: integer, format: int64, minimum: 0 }
+        keysConfigured: { type: integer, minimum: 0 }
+        keysChecked: { type: integer, minimum: 0 }
+        resetsAt: { type: [string, 'null'], format: date-time }
+        checkedAt: { type: string, format: date-time }
+
+    UpdateSourceRequest:
+      type: object
+      properties:
+        enabled: { type: boolean }
+        rateLimitPerMinute: { type: integer, minimum: 1, maximum: 6000 }
+
+    TriggerIngestionRequest:
+      type: object
+      properties:
+        mode: { type: string, enum: [INCREMENTAL, BACKFILL], default: INCREMENTAL }
+        query: { type: string, maxLength: 200 }
+        windowFrom: { type: string, format: date }
+        windowTo: { type: string, format: date }
+
+    IngestionRunView:
+      type: object
+      required: [id, sourceId, status, startedAt]
+      properties:
+        id: { type: string, format: uuid }
+        sourceId: { type: string }
+        mode: { type: string, enum: [INCREMENTAL, BACKFILL, ON_DEMAND] }
+        status: { type: string, enum: [RUNNING, COMPLETED, PARTIAL, FAILED] }
+        documentsFetched: { type: integer }
+        documentsCreated: { type: integer }
+        documentsDuplicate: { type: integer }
+        documentsRejected: { type: integer }
+        errorCode: { type: [string, 'null'] }
+        errorMessage: { type: [string, 'null'] }
+        startedAt: { type: string, format: date-time }
+        finishedAt: { type: [string, 'null'], format: date-time }
+
+    IngestionRunPage:
+      allOf:
+        - $ref: '#/components/schemas/PageMeta'
+        - type: object
+          required: [content]
+          properties:
+            content:
+              type: array
+              items: { $ref: '#/components/schemas/IngestionRunView' }

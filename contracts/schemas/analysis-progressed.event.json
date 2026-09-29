@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/analysis-progressed.event.json",
+  "title": "AnalysisProgressed",
+  "type": "object",
+  "required": ["researchRequestId", "attempt", "stage", "percent"],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId": { "type": "string", "format": "uuid" },
+    "attempt":           { "type": "integer", "minimum": 1 },
+    "stage":             { "enum": ["EXTRACTING", "EMBEDDING", "CLUSTERING", "SCORING", "NARRATING"] },
+    "percent":           { "type": "integer", "minimum": 0, "maximum": 100 },
+    "message":           { "type": ["string", "null"], "maxLength": 300 }
+  }
+}

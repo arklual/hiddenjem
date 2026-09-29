@@ -1,0 +1,45 @@
+@startuml hiddenjem-architecture
+title Hiddenjem — архитектура
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName Montserrat
+
+actor "Аналитик" as user
+
+component "Веб-интерфейс\nReact, TypeScript, nginx\n:3000" as web
+component "API-шлюз\nSpring Cloud Gateway\n:8080" as gateway
+component "trends-service\nоркестратор саги, отчёты\nJava 21, Spring Boot" as trends
+component "ingestion-service\n25 коннекторов, снимок корпуса\nJava 21, Spring Boot, Resilience4j" as ingestion
+component "analytics-worker / analytics-api\nтемы, оценка, отбор, карточки\nPython, FastAPI, numpy, scikit-learn" as analytics
+component "nlp-service\nагент-исследователь, эксперты,\nперевод, веб-корпус (BM25)\nPython, FastAPI, LangGraph" as nlp
+
+queue "Kafka (Redpanda)\nкоманды и события саги" as kafka
+database "PostgreSQL\nсхема на сервис" as pg
+database "Redis\nкэш, квоты, прогресс" as redis
+
+cloud "Открытые источники\nOpenAlex, arXiv, Crossref, Semantic Scholar,\nEurope PMC, alphaXiv, Lens, USPTO, GitHub,\nHacker News, Хабр, Product Hunt, GDELT,\nпресс-релизы, SBIR, NSF, SEC EDGAR, IETF,\nрегуляторы" as sources
+cloud "Внешние признаки\nOpenAlex, Hacker News, Википедия" as features
+cloud "gpt-5.6-luna\nOpenAI-совместимый API" as llm
+folder "Веб-корпус\nsignals.jsonl, docs.jsonl" as corpus
+
+user --> web
+web --> gateway : REST, SSE
+gateway --> trends : REST
+gateway --> ingestion : REST (источники)
+trends <--> kafka : сага
+ingestion <--> kafka : CollectDomainCorpus /\nCorpusCollected
+analytics <--> kafka : AnalyzeDomain /\nDomainAnalyzed
+trends --> pg : JDBC
+trends --> redis
+ingestion --> pg : JDBC
+analytics --> pg
+analytics --> ingestion : снимок корпуса
+ingestion --> sources : HTTP, robots.txt,\nлимиты, предохранители
+ingestion --> nlp : глубокое исследование,\nрасширение запроса
+analytics --> nlp : эксперты, переранжирование,\nперевод
+analytics --> features : признаки модели
+nlp --> llm
+nlp --> corpus : BM25
+
+@enduml

@@ -1,0 +1,34 @@
+# Build output
+dist/
+dist-ssr/
+*.local
+
+# Dependencies
+node_modules/
+
+# Test / tooling output
+coverage/
+.vitest/
+*.tsbuildinfo
+
+# Environment — `.env.example` IS committed; real values are not.
+.env
+.env.local
+.env.*.local
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+*.swp
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# NOTE: src/api/generated.ts is deliberately NOT ignored. The generated contract
+# types are committed so CI and reviewers see the exact types the app builds
+# against, and so `npm ci` never needs the contract file to be present.

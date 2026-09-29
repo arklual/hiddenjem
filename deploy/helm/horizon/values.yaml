@@ -1,0 +1,657 @@
+# =============================================================================
+#  Horizon — значения по умолчанию (базовый набор для всех сред)
+# =============================================================================
+#  Устройство чарта: манифест каждого сервиса генерируется ОДНИМ набором
+#  шаблонов, обходящим карту `services`. Добавление сервиса — это запись в
+#  values.yaml, а не копия шести YAML-файлов, которые через месяц разойдутся.
+#
+#  Порядок наложения:
+#      values.yaml  ->  values-dev.yaml | values-prod.yaml  ->  --set из CI
+#
+#  Ресурсы соответствуют бюджету NFR §9. Значения ниже — production-профиль;
+#  values-dev.yaml режет их для среды разработки.
+# =============================================================================
+
+global:
+  # Реестр образов. CI подставляет полный путь с owner'ом репозитория.
+  imageRegistry: ghcr.io/horizon
+  # Пустой тег => берётся .Chart.AppVersion. CI всегда передаёт явный тег:
+  # `latest` в проде — это невозможность узнать, что именно сейчас работает.
+  imageTag: ""
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets: []
+
+  # Логическое имя среды: попадает в OTel как deployment.environment
+  # и в метки всех ресурсов.
+  environment: production
+
+  # Домен, на котором опубликован UI и API.
+  domain: horizon.example.bank
+
+  # Общие метки, добавляемые ко всем объектам (для FinOps и инвентаризации).
+  commonLabels:
+    app.kubernetes.io/part-of: horizon
+    horizon.dev/tier: application
+  commonAnnotations: {}
+
+  # Единый uid/gid во всех образах Horizon (см. Dockerfile каждого сервиса).
+  runAsUser: 10001
+  runAsGroup: 10001
+  fsGroup: 10001
+
+  # Уровень логирования и профили Spring для всех сервисов.
+  logLevel: INFO
+  springProfiles: k8s
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Инфраструктура: чартом НЕ управляется
+# ─────────────────────────────────────────────────────────────────────────────
+#  PostgreSQL, Kafka, Redis и ClickHouse разворачиваются операторами или берутся
+#  управляемыми сервисами. Здесь описаны только координаты для подключения и
+#  селекторы для NetworkPolicy: приложению нужно знать, куда ходить, а сетевой
+#  политике — кому это разрешено.
+infrastructure:
+  postgres:
+    host: postgres-rw.horizon-data.svc.cluster.local
+    port: 5432
+    database: horizon
+    # Селекторы для egress-правил NetworkPolicy.
+    namespace: horizon-data
+    podLabels:
+      app.kubernetes.io/name: postgresql
+    # Параметры подключения, общие для всех сервисов.
+    sslMode: require
+    poolMaxSize: 20
+    poolMinIdle: 5
+
+  kafka:
+    bootstrapServers: kafka-kafka-bootstrap.horizon-data.svc.cluster.local:9092
+    port: 9092
+    namespace: horizon-data
+    podLabels:
+      strimzi.io/cluster: kafka
+    # В проде брокеров три — реплики топиков тоже.
+    topicReplication: 3
+    topicPartitions: 6
+
+  redis:
+    host: redis-master.horizon-data.svc.cluster.local
+    port: 6379
+    database: 0
+    namespace: horizon-data
+    podLabels:
+      app.kubernetes.io/name: redis
+
+  clickhouse:
+    host: clickhouse.horizon-data.svc.cluster.local
+    httpPort: 8123
+    database: horizon
+    namespace: horizon-data
+    podLabels:
+      app.kubernetes.io/name: clickhouse
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Наблюдаемость
+# ─────────────────────────────────────────────────────────────────────────────
+observability:
+  otel:
+    enabled: true
+    # Коллектор развёрнут как DaemonSet: экспорт идёт на узловой агент,
+    # а не через кластерный сервис — меньше сетевых прыжков и нет
+    # единой точки отказа телеметрии.
+    endpoint: http://otel-collector.observability.svc.cluster.local:4317
+    httpEndpoint: http://otel-collector.observability.svc.cluster.local:4318
+    namespace: observability
+    podLabels:
+      app.kubernetes.io/name: opentelemetry-collector
+    # 10% трейсов в проде: 100% на реальном трафике стоят дороже, чем дают.
+    samplingRatio: "0.1"
+  prometheus:
+    # ServiceMonitor создаётся, если в кластере есть prometheus-operator.
+    serviceMonitor:
+      enabled: true
+      interval: 15s
+      scrapeTimeout: 10s
+      labels:
+        release: kube-prometheus-stack
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Секреты
+# ─────────────────────────────────────────────────────────────────────────────
+#  В репозитории секретов нет и быть не может (NFR-S2). Значения приезжают из
+#  корпоративного хранилища через External Secrets Operator; чарт создаёт только
+#  ссылку на них. См. templates/externalsecret.yaml.
+secrets:
+  externalSecret:
+    # Выключено по умолчанию: включается там, где ESO действительно установлен.
+    # Иначе `helm install` упадёт на неизвестном CRD.
+    enabled: false
+    secretStoreRef:
+      name: corporate-vault
+      kind: ClusterSecretStore
+    refreshInterval: 1h
+    # Путь в хранилище; ключи внутри перечислены в templates/externalsecret.yaml.
+    remotePath: kv/horizon/production
+  # Имя Secret, из которого сервисы читают пароли через envFrom.
+  # Создаётся либо ESO, либо администратором вручную (kubectl create secret).
+  name: horizon-secrets
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Ingress
+# ─────────────────────────────────────────────────────────────────────────────
+ingress:
+  enabled: true
+  className: nginx
+  # TLS обязателен: NFR-S1 (весь внешний трафик TLS 1.2+).
+  tls:
+    enabled: true
+    secretName: horizon-tls
+    # cert-manager выпускает и продлевает сертификат.
+    issuer: letsencrypt-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # SSE-поток прогресса саги (ADR-0012) обязан идти без буферизации,
+    # иначе пользователь увидит все стадии разом в конце.
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+    # Второй рубеж rate limit: первый — на шлюзе (NFR-S7).
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+  # Правила: / -> frontend, /api -> gateway.
+  # Хосты собираются из global.domain, см. templates/ingress.yaml.
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Сетевые политики
+# ─────────────────────────────────────────────────────────────────────────────
+networkPolicy:
+  enabled: true
+  # Базовое правило «запретить всё» на namespace; далее — точечные разрешения.
+  defaultDeny: true
+  # DNS нужен всем и всегда: без него не резолвится ни один сервис,
+  # а симптом («таймауты на ровном месте») уводит расследование в сторону.
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system
+  # Откуда приходит внешний трафик (ingress-контроллер).
+  ingressControllerNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+
+# ─────────────────────────────────────────────────────────────────────────────
+#  Умолчания для сервисов
+# ─────────────────────────────────────────────────────────────────────────────
+#  Всё, что не переопределено в конкретном сервисе, берётся отсюда.
+defaults:
+  replicas: 2
+  revisionHistoryLimit: 3
+  terminationGracePeriodSeconds: 40      # > 30 с graceful shutdown (NFR-R7)
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0                  # ноль: обновление не сокращает ёмкость
+
+  podDisruptionBudget:
+    enabled: true
+    # maxUnavailable вместо minAvailable: правило остаётся верным
+    # при любом числе реплик, которое выставит HPA.
+    maxUnavailable: 1
+
+  # NFR-S9 целиком.
+  securityContext:
+    runAsNonRoot: true
+    readOnlyRootFilesystem: true
+    allowPrivilegeEscalation: false
+    privileged: false
+    capabilities:
+      drop: ["ALL"]
+    seccompProfile:
+      type: RuntimeDefault
+
+  # Реплики раскладываются по зонам и узлам. whenUnsatisfiable: ScheduleAnyway —
+  # осознанный выбор: лучше несбалансированное размещение, чем незапустившийся
+  # под во время инцидента, когда половина узлов недоступна.
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      whenUnsatisfiable: ScheduleAnyway
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      whenUnsatisfiable: ScheduleAnyway
+
+  probes:
+    # type: http | exec
+    type: http
+    liveness:
+      path: /actuator/health/liveness
+      initialDelaySeconds: 0             # старт закрывает startupProbe
+      periodSeconds: 15
+      timeoutSeconds: 3
+      failureThreshold: 3
+    readiness:
+      path: /actuator/health/readiness
+      periodSeconds: 10
+      timeoutSeconds: 3
+      failureThreshold: 3
+      successThreshold: 1
+    startup:
+      path: /actuator/health
+      periodSeconds: 5
+      timeoutSeconds: 3
+      # 60 x 5 c = до 5 минут на старт JVM + миграции Flyway.
+      # Меньше — и медленный старт под нагрузкой превратится в цикл рестартов.
+      failureThreshold: 60
+
+  hpa:
+    enabled: false
+    minReplicas: 2
+    maxReplicas: 6
+    targetCPUUtilizationPercentage: 70
+    behavior:
+      scaleUp:
+        # Наверх — быстро: очередь растёт сейчас, а не через пять минут.
+        stabilizationWindowSeconds: 30
+        policies:
+          - type: Percent
+            value: 100
+            periodSeconds: 30
+      scaleDown:
+        # Вниз — медленно: преждевременное сокращение реплик во время
+        # затухающего пика возвращает нагрузку на меньшее число подов.
+        stabilizationWindowSeconds: 300
+        policies:
+          - type: Percent
+            value: 25
+            periodSeconds: 60
+
+  # Пауза между исключением пода из Endpoints и отправкой SIGTERM.
+  # 0 отключает hook. Подробности — в комментарии в deployment.yaml.
+  lifecycle:
+    preStopSleepSeconds: 5
+
+  # Экспорт метрик. port: 0 означает «тот же порт, что и у приложения».
+  metrics:
+    enabled: true
+    path: /actuator/prometheus
+    port: 0
+
+  priorityClassName: ""
+
+  serviceAccount:
+    create: true
+    # Ни один сервис Horizon не обращается к API Kubernetes. Токен, который
+    # никому не нужен, — это только материал для эксплуатации уязвимости.
+    automountServiceAccountToken: false
+    annotations: {}
+
+  service:
+    type: ClusterIP
+    annotations: {}
+
+  nodeSelector: {}
+  tolerations: []
+  affinity: {}
+  extraEnv: []
+  extraVolumes: []
+  extraVolumeMounts: []
+
+  # Записываемые пути при readOnlyRootFilesystem: true.
+  # Без них JVM не сможет создать временный файл, а nginx — pid-файл.
+  writableVolumes:
+    - name: tmp
+      mountPath: /tmp
+      sizeLimit: 128Mi
+
+# =============================================================================
+#  СЕРВИСЫ
+# =============================================================================
+#  Шесть сервисов, семь рабочих нагрузок: analytics-service разворачивается
+#  двумя Deployment из ОДНОГО образа (ADR-0014) — у ролей api и worker разные
+#  профили масштабирования, но обязана быть одна и та же доменная логика.
+services:
+
+  # ───────────────────────────── gateway ─────────────────────────────
+  gateway:
+    enabled: true
+    image:
+      repository: gateway
+    port: 8080
+    replicas: 2
+    role: edge
+    # NFR §9: 200m/1000m, 256Mi/512Mi
+    resources:
+      requests:
+        cpu: 200m
+        memory: 256Mi
+      limits:
+        cpu: 1000m
+        memory: 512Mi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+      # Шлюз упирается не в CPU, а в число одновременных запросов: по одному
+      # лишь CPU он масштабируется с опозданием, когда очередь уже выросла.
+      # Метрика поставляется prometheus-adapter из http_server_requests_seconds_count.
+      pods:
+        - metric: horizon_http_requests_per_second
+          averageValue: "50"
+    config:
+      SERVER_PORT: "8080"
+      RATE_LIMIT_PER_MINUTE: "300"
+      RATE_LIMIT_BURST: "40"
+    networkPolicy:
+      # Снаружи — только через ingress-контроллер.
+      ingressFromIngressController: true
+      ingressFrom: [frontend]
+      egressTo: [trends-service, ingestion-service, analytics-api]
+      egressInfra: [redis]
+
+  # ───────────────────────────── trends-service ─────────────────────────────
+  trends-service:
+    enabled: true
+    image:
+      repository: trends-service
+    port: 8082
+    replicas: 2
+    schema: trends
+    # NFR §9: 300m/1500m, 512Mi/1Gi
+    resources:
+      requests:
+        cpu: 300m
+        memory: 512Mi
+      limits:
+        cpu: 1500m
+        memory: 1Gi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+      pods:
+        - metric: horizon_http_requests_per_second
+          averageValue: "40"
+    config:
+      SERVER_PORT: "8082"
+      # Дедлайн саги по режиму анализа: быстрый — двадцать минут, качественный — сорок
+      # (глубокое исследование в нём читает двадцать).
+      HORIZON_SAGA_TIMEOUT: "PT20M"
+      HORIZON_SAGA_TIMEOUT_QUALITY: "PT40M"
+      HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL: "PT30S"
+      HORIZON_REPORT_CACHE_TTL: "PT24H"
+    networkPolicy:
+      ingressFrom: [gateway]
+      egressInfra: [postgres, redis, kafka]
+
+  # ───────────────────────────── ingestion-service ─────────────────────────────
+  ingestion-service:
+    enabled: true
+    image:
+      repository: ingestion-service
+    port: 8083
+    replicas: 2
+    schema: ingestion
+    # NFR §9: 300m/2000m, 512Mi/1Gi
+    resources:
+      requests:
+        cpu: 300m
+        memory: 512Mi
+      limits:
+        cpu: 2000m
+        memory: 1Gi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 75
+    config:
+      SERVER_PORT: "8083"
+      HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN: "5000"
+      # Шестьдесят секунд, а не двадцать. Научные API отвечают на страницу выдачи десятки
+      # секунд, когда им тяжело: замер 2026-09-18 по arXiv с настоящим запросом направления —
+      # 6 s на сотню записей и 32 s на двести. При двадцати секундах это не медленная
+      # страница, а потерянный источник: четыре попытки по таймауту и отчёт без arXiv.
+      HORIZON_INGESTION_HTTP_TIMEOUT: "PT60S"
+      HORIZON_INGESTION_CB_FAILURE_RATE_THRESHOLD: "50"
+      HORIZON_INGESTION_CB_WAIT_DURATION: "PT30S"
+      # Представление источникам. Три коннектора ниже включены, а адреса здесь не было вовсе:
+      # dev и staging ходили к Crossref и OpenAlex с умолчанием из application.yml, то есть
+      # заглушкой, — и получали ограничение частоты там, где прод его не получает. Значение
+      # остаётся заглушкой сознательно: подставить сюда правдоподобный чужой ящик хуже, чем
+      # оставить видимый, а при старте такая настройка пишет
+      # connectors.contact_email_is_placeholder. Переопределяется на окружение.
+      HORIZON_CONNECTOR_CONTACT_EMAIL: "ops@horizon.example"
+      HORIZON_INGESTION_USER_AGENT: "HorizonBot/1.0"
+      HORIZON_SOURCE_ARXIV_ENABLED: "true"
+      HORIZON_SOURCE_ALPHAXIV_ENABLED: "false"
+      HORIZON_SOURCE_OPENALEX_ENABLED: "true"
+      HORIZON_SOURCE_CROSSREF_ENABLED: "true"
+    networkPolicy:
+      ingressFrom: [gateway]
+      egressInfra: [postgres, redis, kafka]
+      # Единственный сервис, которому нужен выход в интернет: коннекторы ходят
+      # в arXiv, OpenAlex, Crossref. Всем остальным он запрещён — это
+      # ограничивает ущерб от скомпрометированной зависимости.
+      egressInternet: true
+
+  # ─────────────────── analytics-service, роль api (ADR-0014) ───────────────────
+  analytics-api:
+    enabled: true
+    image:
+      repository: analytics-service
+    args: ["api"]
+    port: 8000
+    replicas: 2
+    schema: analytics
+    serviceName: analytics-service
+    role: api
+    # NFR §9 задаёт бюджет на analytics-service целиком (500m/3000m, 1Gi/3Gi);
+    # он поделён между ролями: api обслуживает быстрые запросы, тяжёлый
+    # счёт живёт в worker.
+    resources:
+      requests:
+        cpu: 200m
+        memory: 512Mi
+      limits:
+        cpu: 1000m
+        memory: 1Gi
+    probes:
+      type: http
+      liveness:
+        path: /health/live
+        periodSeconds: 15
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readiness:
+        path: /health/ready
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      startup:
+        path: /health
+        periodSeconds: 5
+        timeoutSeconds: 3
+        failureThreshold: 30
+    metrics:
+      path: /metrics
+      port: 8000
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 4
+      targetCPUUtilizationPercentage: 70
+    config:
+      HORIZON_ANALYTICS_ROLE: "api"
+      HORIZON_ANALYTICS_PORT: "8000"
+      HORIZON_MENTION_STORE: "clickhouse"
+      HORIZON_EMBEDDING_PROVIDER: "tfidf-svd"
+      HORIZON_EMBEDDING_DIM: "384"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_LLM_ENABLED: "false"
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    networkPolicy:
+      ingressFrom: [gateway]
+      egressInfra: [postgres, clickhouse, kafka]
+
+  # ───────────────── analytics-service, роль worker (ADR-0014) ─────────────────
+  analytics-worker:
+    enabled: true
+    image:
+      repository: analytics-service
+    args: ["worker"]
+    # HTTP-API нет; единственный слушатель — экспорт метрик prometheus_client.
+    # Порт назван http в манифестах (общий шаблон), но по факту это metrics.
+    port: 9100
+    replicas: 2
+    schema: analytics
+    serviceName: analytics-service
+    role: worker
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        cpu: 3000m
+        memory: 3Gi
+    probes:
+      # HTTP-пробы неприменимы: процесс не слушает HTTP на порту приложения.
+      # Скрипт entrypoint проверяет свежесть файла живости, который консьюмер
+      # обновляет после каждого poll (см. services/analytics-service/docker-entrypoint.sh).
+      type: exec
+      liveness:
+        command: ["/usr/local/bin/docker-entrypoint.sh", "healthcheck"]
+        periodSeconds: 30
+        timeoutSeconds: 10
+        failureThreshold: 3
+      readiness:
+        command: ["/usr/local/bin/docker-entrypoint.sh", "healthcheck"]
+        periodSeconds: 15
+        timeoutSeconds: 10
+        failureThreshold: 3
+      startup:
+        command: ["/usr/local/bin/docker-entrypoint.sh", "healthcheck"]
+        periodSeconds: 10
+        timeoutSeconds: 10
+        failureThreshold: 30
+    metrics:
+      path: /metrics
+      port: 9100
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      # CPU здесь плохой сигнал: воркер простаивает в ожидании сообщений
+      # и мгновенно упирается в 100% на первом же анализе. Настоящий признак
+      # перегрузки — лаг консьюмера.
+      targetCPUUtilizationPercentage: 0
+      external:
+        - metric: kafka_consumergroup_lag
+          # Метрику поставляет prometheus-adapter (или KEDA) из Prometheus.
+          # Селектор ограничивает её группой и топиком именно этого воркера,
+          # иначе HPA будет реагировать на лаг чужих потребителей.
+          selector:
+            matchLabels:
+              consumergroup: horizon-analysis-worker
+              topic: horizon.analysis.commands.v1
+          # AverageValue: целевое значение делится на число реплик.
+          # 200 необработанных команд на реплику — примерно 30 с работы
+          # при текущей длительности анализа, что укладывается в NFR-P5.
+          targetAverageValue: "200"
+      behavior:
+        scaleUp:
+          stabilizationWindowSeconds: 60
+          policies:
+            - type: Pods
+              value: 2
+              periodSeconds: 60
+        scaleDown:
+          # 10 минут: анализ длится десятки секунд, и убить реплику
+          # в середине прогона означает потерять работу и повторить её.
+          stabilizationWindowSeconds: 600
+          policies:
+            - type: Pods
+              value: 1
+              periodSeconds: 120
+    config:
+      HORIZON_ANALYTICS_ROLE: "worker"
+      HORIZON_ANALYTICS_WORKER_CONCURRENCY: "2"
+      # Сколько пачка команд (до CONCURRENCY анализов, по очереди) вправе не возвращаться к опросу
+      # очереди. Умолчание aiokafka — пять минут, а анализ идёт пять–десять: брокер исключал бы
+      # потребителя посреди анализа. 45 минут — выше саги качественного режима.
+      HORIZON_ANALYTICS_MAX_POLL_INTERVAL_MS: "2700000"
+      HORIZON_WORKER_LIVENESS_FILE: "/tmp/worker-alive"
+      HORIZON_MENTION_STORE: "clickhouse"
+      HORIZON_EMBEDDING_PROVIDER: "tfidf-svd"
+      HORIZON_EMBEDDING_DIM: "384"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_LLM_ENABLED: "false"
+      OMP_NUM_THREADS: "4"
+      OPENBLAS_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+    writableVolumes:
+      - name: tmp
+        mountPath: /tmp
+        # Больше, чем у остальных: здесь лежат промежуточные матрицы эмбеддингов.
+        sizeLimit: 1Gi
+    networkPolicy:
+      # ingressFrom пуст: воркер не принимает пользовательский трафик вообще.
+      # Единственное входящее соединение — скрейп Prometheus; правило для него
+      # шаблон добавляет автоматически всем, у кого metrics.enabled = true.
+      egressInfra: [postgres, clickhouse, kafka]
+
+  # ───────────────────────────── frontend ─────────────────────────────
+  frontend:
+    enabled: true
+    image:
+      repository: frontend
+    # 8080, а не 80: непривилегированный процесс не может занять
+    # порт < 1024 без CAP_NET_BIND_SERVICE, а capabilities сброшены (NFR-S9).
+    port: 8080
+    replicas: 2
+    role: web
+    # NFR §9: 50m/200m, 64Mi/128Mi
+    resources:
+      requests:
+        cpu: 50m
+        memory: 64Mi
+      limits:
+        cpu: 200m
+        memory: 128Mi
+    probes:
+      type: http
+      liveness:
+        path: /healthz
+        periodSeconds: 15
+        timeoutSeconds: 3
+        failureThreshold: 3
+      readiness:
+        path: /healthz
+        periodSeconds: 10
+        timeoutSeconds: 3
+        failureThreshold: 3
+      startup:
+        path: /healthz
+        periodSeconds: 3
+        timeoutSeconds: 2
+        failureThreshold: 20
+    metrics:
+      # nginx метрик не отдаёт: ServiceMonitor для фронта не создаётся.
+      enabled: false
+    hpa:
+      enabled: false
+    config:
+      NGINX_PORT: "8080"
+      HORIZON_API_TIMEOUT: "60s"
+      HORIZON_HSTS_DIRECTIVE: 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains" always;'
+    writableVolumes:
+      - name: tmp
+        mountPath: /tmp
+        sizeLimit: 32Mi
+    networkPolicy:
+      ingressFromIngressController: true
+      egressTo: [gateway]

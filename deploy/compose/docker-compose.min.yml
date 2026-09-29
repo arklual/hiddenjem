@@ -1,0 +1,655 @@
+# =============================================================================
+#  Horizon — «тонкий» профиль для стеснённой машины (2 ядра / 3 ГБ)
+# =============================================================================
+#  Запуск:  make up-min
+#           docker compose -f deploy/compose/docker-compose.min.yml up -d
+#
+#  Это САМОСТОЯТЕЛЬНЫЙ файл, а не override к docker-compose.yml: override умеет
+#  добавлять и менять сервисы, но не умеет их удалять, а здесь надо именно убрать.
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#  ЧТО ИМЕННО ПРИНЕСЕНО В ЖЕРТВУ И ЧЕМ ЭТО ГРОЗИТ
+# ─────────────────────────────────────────────────────────────────────────────
+#  1. НЕТ ClickHouse. analytics-service переключён на резервную реализацию порта
+#     `MentionFactStore` поверх PostgreSQL (HORIZON_MENTION_STORE=postgres).
+#     Последствия: агрегации «термин x период x класс источника» считаются
+#     обычным GROUP BY в OLTP-базе. На golden-корпусе (тысячи документов) это
+#     работает и даёт ТЕ ЖЕ значения; на реальном корпусе (10^8 строк фактов)
+#     деградирует и НЕ выполняет NFR-P6 (<= 2 c на запрос). Проверять
+#     производительность аналитики в этом профиле нельзя — только корректность.
+#     Обратный путь: ADR-0007 «Путь назад» — обе реализации покрыты одними тестами.
+#
+#  2. НЕТ наблюдаемости (otel-collector, prometheus, tempo, grafana).
+#     Последствия: нет трейсов, метрик, дашбордов и алертов. Отладка — только
+#     по логам контейнеров (`make logs`). Требования NFR-O1..O5 в этом профиле
+#     не проверяются; перед PR прогоняйте `make up` на полном стеке.
+#     Экспорт телеметрии выключен явно (OTEL_SDK_DISABLED=true), иначе каждый
+#     сервис раз в секунду писал бы в лог ошибку соединения с коллектором.
+#
+#  3. ЛИМИТЫ ПАМЯТИ НИЖЕ БЮДЖЕТА NFR §9 (местами вдвое). Последствия: больше
+#     пауз GC, выше latency, дольше старт. NFR-P1 (p95 <= 300 мс) и NFR-P2
+#     (полный цикл p95 <= 90 c) в этом профиле НЕ ГАРАНТИРУЮТСЯ.
+#     JVM переведена на SerialGC и C1-компиляцию: в контейнере на 300 МБ это
+#     экономит ~40 МБ на сервис и сокращает старт, ценой пикового throughput.
+#
+#  4. Суммарный потолок памяти ~2.8 ГБ — это ВЕРХНЯЯ граница лимитов, фактическое
+#     потребление ниже. На машине ровно с 3 ГБ закройте браузер и IDE.
+#     Если всё равно тесно, поднимайте подмножество:
+#         docker compose -f deploy/compose/docker-compose.min.yml up -d \
+#             postgres redpanda redis trends-service analytics-worker
+# =============================================================================
+
+name: horizon
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "5m"
+    max-file: "2"
+
+x-security: &hardened
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-min-jvm-env: &min-jvm-env
+  TZ: "${TZ:-UTC}"
+  # `local` заводит ключ подписи и администратора — см. docker-compose.yml.
+  SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-docker,min,local}"
+  SPRING_MAIN_BANNER_MODE: "off"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+  SERVER_SHUTDOWN: "graceful"
+  SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: "20s"
+  HORIZON_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+  HORIZON_LOG_FORMAT: "${HORIZON_LOG_FORMAT:-json}"
+  HORIZON_ENV: "${HORIZON_ENV:-local-min}"
+  # SerialGC вместо G1: на куче < 256 МБ параллельный сборщик держит несколько
+  # регионов и потоков, которые здесь только едят память.
+  # TieredStopAtLevel=1 — только C1: старт быстрее, пиковая скорость ниже.
+  JAVA_TOOL_OPTIONS: >-
+    -XX:MaxRAMPercentage=70.0
+    -XX:+UseSerialGC
+    -XX:TieredStopAtLevel=1
+    -XX:MaxMetaspaceSize=160m
+    -Xss512k
+    -XX:+ExitOnOutOfMemoryError
+    -Djava.io.tmpdir=/tmp
+    -Duser.timezone=UTC
+    -Dfile.encoding=UTF-8
+    -Djava.awt.headless=true
+    -Dspring.jmx.enabled=false
+
+x-min-otel-env: &min-otel-env
+  # Коллектора в этом профиле нет. Имя и атрибуты оставлены, чтобы конфигурация
+  # сервиса не расходилась между профилями; сам SDK выключен.
+  OTEL_SDK_DISABLED: "true"
+  OTEL_TRACES_EXPORTER: "none"
+  OTEL_METRICS_EXPORTER: "none"
+  OTEL_LOGS_EXPORTER: "none"
+
+x-min-kafka-env: &min-kafka-env
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+
+x-min-redis-env: &min-redis-env
+  SPRING_DATA_REDIS_HOST: "${REDIS_HOST:-redis}"
+  SPRING_DATA_REDIS_PORT: "6379"
+  SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+  SPRING_DATA_REDIS_DATABASE: "${REDIS_DATABASE:-0}"
+
+x-min-db-pool-env: &min-db-pool-env
+  # Пул на 4 соединения вместо 10: 4 сервиса x 10 = 40 соединений, каждое
+  # стоит PostgreSQL несколько мегабайт work_mem.
+  SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE: "4"
+  SPRING_DATASOURCE_HIKARI_MINIMUMIDLE: "1"
+  SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT: "${DB_CONNECTION_TIMEOUT_MS:-3000}"
+
+# =============================================================================
+services:
+
+  # ─────────────────────────── PostgreSQL 16 + pgvector ───────────────────────────
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: horizon-postgres
+    restart: unless-stopped
+    stop_grace_period: 20s
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-horizon}"
+      POSTGRES_USER: "${POSTGRES_SUPERUSER:-horizon_admin}"
+      POSTGRES_PASSWORD: "${POSTGRES_SUPERUSER_PASSWORD:-horizon_admin_dev_pwd}"
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: "${TZ:-UTC}"
+      PGTZ: "${TZ:-UTC}"
+    command:
+      - postgres
+      - -c
+      - max_connections=40
+      - -c
+      - shared_buffers=96MB
+      - -c
+      - effective_cache_size=192MB
+      - -c
+      - work_mem=4MB
+      - -c
+      - maintenance_work_mem=32MB
+      - -c
+      - log_destination=jsonlog
+      - -c
+      - logging_collector=off
+      - -c
+      - log_min_duration_statement=1000
+      - -c
+      - timezone=UTC
+    ports:
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_SUPERUSER:-horizon_admin} -d ${POSTGRES_DB:-horizon}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 288m
+    logging: *default-logging
+    networks: [horizon]
+
+  postgres-init:
+    image: pgvector/pgvector:pg16
+    container_name: horizon-postgres-init
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: "${POSTGRES_DB:-horizon}"
+      PGUSER: "${POSTGRES_SUPERUSER:-horizon_admin}"
+      PGPASSWORD: "${POSTGRES_SUPERUSER_PASSWORD:-horizon_admin_dev_pwd}"
+      INGESTION_DB_USER: "${INGESTION_DB_USER:-ingestion_app}"
+      INGESTION_DB_PASSWORD: "${INGESTION_DB_PASSWORD:-ingestion_dev_pwd}"
+      TRENDS_DB_USER: "${TRENDS_DB_USER:-trends_app}"
+      TRENDS_DB_PASSWORD: "${TRENDS_DB_PASSWORD:-trends_dev_pwd}"
+      ANALYTICS_DB_USER: "${ANALYTICS_DB_USER:-analytics_app}"
+      ANALYTICS_DB_PASSWORD: "${ANALYTICS_DB_PASSWORD:-analytics_dev_pwd}"
+    volumes:
+      - ./initdb:/initdb:ro
+    entrypoint: ["/bin/bash", "-eu", "-o", "pipefail", "-c"]
+    command:
+      - |
+        for f in /initdb/*.sql; do
+          echo "[postgres-init] --> $${f}"
+          psql --quiet --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v ingestion_user="$${INGESTION_DB_USER}" -v ingestion_password="$${INGESTION_DB_PASSWORD}" \
+               -v trends_user="$${TRENDS_DB_USER}"       -v trends_password="$${TRENDS_DB_PASSWORD}" \
+               -v analytics_user="$${ANALYTICS_DB_USER}" -v analytics_password="$${ANALYTICS_DB_PASSWORD}" \
+               -f "$${f}"
+        done
+        echo "[postgres-init] done"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Redpanda ───────────────────────────
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: horizon-redpanda
+    restart: unless-stopped
+    stop_grace_period: 20s
+    command:
+      - redpanda
+      - start
+      - --mode=dev-container
+      - --smp=1
+      # 512M — практический минимум для seastar в dev-container;
+      # ниже брокер стартует, но начинает отбивать запросы под нагрузкой.
+      - --memory=512M
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --default-log-level=warn
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:${REDPANDA_KAFKA_PORT:-19092}
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+    ports:
+      - "127.0.0.1:${REDPANDA_KAFKA_PORT:-19092}:19092"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 768m
+          # 576m не хватало: seastar сверяет `--memory=512M` с физически доступной памятью внутри
+          # cgroup, а не с лимитом, и служебные страницы самого контейнера оставляли 510 МиБ —
+          # брокер падал с «insufficient physical memory: needed 536870912 available 534773760»,
+          # и вместе с ним не поднимался весь стек. Запас, а не точное совпадение.
+    logging: *default-logging
+    networks: [horizon]
+
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: horizon-redpanda-init
+    restart: "no"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      BROKERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+      # 1 партиция вместо 3: на 2 ядрах параллелизм всё равно не реализуется,
+      # а каждая партиция — это отдельные файлы и буферы у брокера.
+      # Порядок событий саги при этом сохраняется (ключ — researchRequestId).
+      PARTITIONS: "1"
+      REPLICATION: "1"
+    entrypoint: ["/bin/bash", "-eu", "-o", "pipefail", "-c"]
+    command:
+      - |
+        TOPICS="
+          horizon.ingestion.commands.v1
+          horizon.ingestion.events.v1
+          horizon.documents.v1
+          horizon.analysis.commands.v1
+          horizon.analysis.events.v1
+          horizon.trends.events.v1
+        "
+        for t in $${TOPICS}; do
+          for name in "$${t}" "$${t}.dlq"; do
+            rpk topic create "$${name}" --brokers "$${BROKERS}" \
+                --partitions "$${PARTITIONS}" --replicas "$${REPLICATION}" \
+              || echo "[redpanda-init] $${name} already exists — ok"
+          done
+        done
+        EXISTING="$(rpk topic list --brokers "$${BROKERS}" | awk 'NR>1 {print $$1}')"
+        MISSING=0
+        for t in $${TOPICS}; do
+          for name in "$${t}" "$${t}.dlq"; do
+            echo "$${EXISTING}" | grep -qx "$${name}" || { echo "MISSING $${name}" >&2; MISSING=1; }
+          done
+        done
+        [ "$${MISSING}" -eq 0 ] || exit 1
+        echo "[redpanda-init] all 12 topics present"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Redis ───────────────────────────
+  redis:
+    image: redis:7-alpine
+    container_name: horizon-redis
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    command:
+      - sh
+      - -c
+      # appendonly выключен: в min-профиле Redis — чистый кэш, а его содержимое
+      # по определению восстановимо (см. §5 модели данных). Экономит fsync и место.
+      - >-
+        exec redis-server
+        --appendonly no
+        --save ""
+        --maxmemory 48mb
+        --maxmemory-policy volatile-lru
+        $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -h 127.0.0.1 --no-auth-warning $${REDIS_PASSWORD:+-a $$REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: 64m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ═══════════════════════════ СЕРВИСЫ HORIZON ═══════════════════════════
+
+  trends-service:
+    build:
+      context: ../../services
+      dockerfile: trends-service/Dockerfile
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/trends-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-trends-service
+    restart: unless-stopped
+    stop_grace_period: 25s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      <<: [*min-jvm-env, *min-otel-env, *min-kafka-env, *min-redis-env, *min-db-pool-env]
+      SERVER_PORT: "8082"
+      OTEL_SERVICE_NAME: "trends-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=trends-service,service.namespace=horizon,deployment.environment=${HORIZON_ENV:-local-min}"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-horizon}?currentSchema=trends&ApplicationName=trends-service"
+      SPRING_DATASOURCE_USERNAME: "${TRENDS_DB_USER:-trends_app}"
+      SPRING_DATASOURCE_PASSWORD: "${TRENDS_DB_PASSWORD:-trends_dev_pwd}"
+      SPRING_FLYWAY_SCHEMAS: "trends"
+      SPRING_FLYWAY_DEFAULT_SCHEMA: "trends"
+      # Дедлайн саги увеличен: на 2 ядрах анализ идёт заметно дольше,
+      # с исходными 10 минутами прогон падал бы по SAGA_TIMEOUT.
+      HORIZON_SAGA_TIMEOUT: "PT20M"
+      # Качественный режим: глубокое исследование читает двадцать минут, сага — сорок.
+      HORIZON_SAGA_TIMEOUT_QUALITY: "PT40M"
+      HORIZON_ANALYTICS_BASE_URL: "${HORIZON_ANALYTICS_BASE_URL:-http://analytics-service:8000}"
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL: "${HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL:-PT30S}"
+      HORIZON_REPORT_CACHE_TTL: "${HORIZON_REPORT_CACHE_TTL:-PT24H}"
+    ports:
+      - "127.0.0.1:${TRENDS_PORT:-8082}:8082"
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=32m
+    deploy:
+      resources:
+        limits:
+          memory: 352m
+    logging: *default-logging
+    networks: [horizon]
+
+  ingestion-service:
+    build:
+      context: ../../services
+      dockerfile: ingestion-service/Dockerfile
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/ingestion-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-ingestion-service
+    restart: unless-stopped
+    stop_grace_period: 25s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+    environment:
+      <<: [*min-jvm-env, *min-otel-env, *min-kafka-env, *min-redis-env, *min-db-pool-env]
+      SERVER_PORT: "8083"
+      OTEL_SERVICE_NAME: "ingestion-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=ingestion-service,service.namespace=horizon,deployment.environment=${HORIZON_ENV:-local-min}"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-horizon}?currentSchema=ingestion&ApplicationName=ingestion-service"
+      SPRING_DATASOURCE_USERNAME: "${INGESTION_DB_USER:-ingestion_app}"
+      SPRING_DATASOURCE_PASSWORD: "${INGESTION_DB_PASSWORD:-ingestion_dev_pwd}"
+      SPRING_FLYWAY_SCHEMAS: "ingestion"
+      SPRING_FLYWAY_DEFAULT_SCHEMA: "ingestion"
+      HORIZON_INGESTION_USER_AGENT: "${HORIZON_INGESTION_USER_AGENT:-HorizonBot/1.0}"
+      # В min-профиле внешние источники выключены: они съедают сеть и время, а проверять на них
+      # тут всё равно нечего.
+      # Общий секрет внутренней поверхности `/internal/**`, откуда движок забирает собранный
+      # корпус. Тот же, которым закрыт `/internal/analyze` у самого движка: граница одна.
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      HORIZON_SOURCE_ARXIV_ENABLED: "false"
+      HORIZON_SOURCE_ALPHAXIV_ENABLED: "false"
+      HORIZON_SOURCE_OPENALEX_ENABLED: "false"
+      HORIZON_SOURCE_CROSSREF_ENABLED: "false"
+      HORIZON_SOURCE_GITHUB_ENABLED: "false"
+      HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN: "1000"
+      HORIZON_RAW_STORE_PATH: "/var/lib/horizon/raw"
+    ports:
+      - "127.0.0.1:${INGESTION_PORT:-8083}:8083"
+    volumes:
+      - ingestion-raw:/var/lib/horizon/raw
+      - ../../fixtures:/opt/horizon/fixtures:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,nosuid,size=32m
+    deploy:
+      resources:
+        limits:
+          memory: 320m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── analytics: api ───────────────────────────
+  analytics-api:
+    build:
+      context: ../../services/analytics-service
+      dockerfile: Dockerfile
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/analytics-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-analytics-api
+    restart: unless-stopped
+    stop_grace_period: 25s
+    command: ["api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      <<: *min-otel-env
+      TZ: "${TZ:-UTC}"
+      HORIZON_ANALYTICS_ROLE: "api"
+      # Включает /internal/*: без секрета движок отвечает 404, и трассировка термина
+      # в интерфейсе молча перестала бы работать.
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      HORIZON_ANALYTICS_PORT: "8000"
+      OTEL_SERVICE_NAME: "analytics-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=analytics-service,service.role=api,service.namespace=horizon,deployment.environment=${HORIZON_ENV:-local-min}"
+      HORIZON_ENV: "${HORIZON_ENV:-local-min}"
+      HORIZON_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+      HORIZON_LOG_FORMAT: "${HORIZON_LOG_FORMAT:-json}"
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+      # ───────────────────────────────────────────────────────────────────
+      #  КЛЮЧЕВОЕ ОТЛИЧИЕ ПРОФИЛЯ: ClickHouse нет, факты упоминаний хранятся
+      #  в PostgreSQL через резервную реализацию порта MentionFactStore.
+      #  См. шапку файла, пункт 1 — что именно из-за этого не проверяется.
+      # ───────────────────────────────────────────────────────────────────
+      # Откуда движок берёт собранный корпус. Без адреса он переходит на эталонный корпус, а тот
+      # отвечает на любой идентификатор снапшота — то есть молча подменяет собой настоящие данные.
+      HORIZON_INGESTION_URL: "${HORIZON_INGESTION_URL:-http://ingestion-service:8083}"
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB:-horizon}"
+      ANALYTICS_DB_USER: "${ANALYTICS_DB_USER:-analytics_app}"
+      ANALYTICS_DB_PASSWORD: "${ANALYTICS_DB_PASSWORD:-analytics_dev_pwd}"
+      ANALYTICS_DB_SCHEMA: "${ANALYTICS_DB_SCHEMA:-analytics}"
+      HORIZON_MENTION_STORE: "postgres"
+      HORIZON_EMBEDDING_PROVIDER: "${HORIZON_EMBEDDING_PROVIDER:-tfidf-svd}"
+      HORIZON_EMBEDDING_DIM: "${HORIZON_EMBEDDING_DIM:-384}"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_METHODOLOGY_VERSION: "${HORIZON_METHODOLOGY_VERSION:-1.0.0}"
+      HORIZON_FIXED_CLOCK: "${HORIZON_FIXED_CLOCK:-}"
+      HORIZON_LLM_ENABLED: "false"
+      # Движок один — signals; модель поставляется с образом. Кэш внешних признаков — во
+      # временной файловой системе: корень только для чтения, а кэш — лишь ускорение.
+      HORIZON_SIGNALS_CACHE_DIR: "/tmp/signals-cache"
+      # Один поток BLAS: на 2 ядрах два численных контейнера иначе дерутся за CPU.
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    ports:
+      - "127.0.0.1:${ANALYTICS_PORT:-8000}:8000"
+    volumes:
+      # Эталонный корпус — источник документов для анализа (ADR-0015), см. docker-compose.yml.
+      - ../../fixtures:/opt/horizon/fixtures:ro
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    deploy:
+      resources:
+        limits:
+          memory: 288m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── analytics: worker ───────────────────────────
+  analytics-worker:
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/analytics-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-analytics-worker
+    restart: unless-stopped
+    stop_grace_period: 25s
+    command: ["worker"]
+    depends_on:
+      analytics-api:
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+    environment:
+      <<: *min-otel-env
+      TZ: "${TZ:-UTC}"
+      HORIZON_ANALYTICS_ROLE: "worker"
+      HORIZON_METRICS_PORT: "${HORIZON_METRICS_PORT:-9100}"
+      # Одна задача за раз: параллельный анализ на 2 ядрах только увеличивает
+      # общее время и рискует OOM.
+      HORIZON_ANALYTICS_WORKER_CONCURRENCY: "1"
+      HORIZON_ANALYTICS_MAX_POLL_INTERVAL_MS: "2700000"
+      HORIZON_WORKER_LIVENESS_FILE: "/tmp/worker-alive"
+      OTEL_SERVICE_NAME: "analytics-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=analytics-service,service.role=worker,service.namespace=horizon,deployment.environment=${HORIZON_ENV:-local-min}"
+      HORIZON_ENV: "${HORIZON_ENV:-local-min}"
+      HORIZON_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+      HORIZON_LOG_FORMAT: "${HORIZON_LOG_FORMAT:-json}"
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+      KAFKA_CONSUMER_GROUP_PREFIX: "${KAFKA_CONSUMER_GROUP_PREFIX:-horizon}"
+      # То же переключение хранилища фактов, что и у роли api.
+      # Откуда движок берёт собранный корпус. Без адреса он переходит на эталонный корпус, а тот
+      # отвечает на любой идентификатор снапшота — то есть молча подменяет собой настоящие данные.
+      HORIZON_INGESTION_URL: "${HORIZON_INGESTION_URL:-http://ingestion-service:8083}"
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB:-horizon}"
+      ANALYTICS_DB_USER: "${ANALYTICS_DB_USER:-analytics_app}"
+      ANALYTICS_DB_PASSWORD: "${ANALYTICS_DB_PASSWORD:-analytics_dev_pwd}"
+      ANALYTICS_DB_SCHEMA: "${ANALYTICS_DB_SCHEMA:-analytics}"
+      HORIZON_MENTION_STORE: "postgres"
+      HORIZON_EMBEDDING_PROVIDER: "${HORIZON_EMBEDDING_PROVIDER:-tfidf-svd}"
+      HORIZON_EMBEDDING_DIM: "${HORIZON_EMBEDDING_DIM:-384}"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_METHODOLOGY_VERSION: "${HORIZON_METHODOLOGY_VERSION:-1.0.0}"
+      HORIZON_FIXED_CLOCK: "${HORIZON_FIXED_CLOCK:-}"
+      HORIZON_LLM_ENABLED: "false"
+      # Движок один — signals; модель поставляется с образом. Кэш внешних признаков — во
+      # временной файловой системе: корень только для чтения, а кэш — лишь ускорение.
+      HORIZON_SIGNALS_CACHE_DIR: "/tmp/signals-cache"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+    volumes:
+      # Эталонный корпус — источник документов для анализа (ADR-0015), см. docker-compose.yml.
+      - ../../fixtures:/opt/horizon/fixtures:ro
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=128m
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── gateway ───────────────────────────
+  gateway:
+    build:
+      context: ../../services
+      dockerfile: gateway/Dockerfile
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/gateway:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-gateway
+    restart: unless-stopped
+    stop_grace_period: 25s
+    depends_on:
+      trends-service:
+        condition: service_healthy
+      ingestion-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    environment:
+      <<: [*min-jvm-env, *min-otel-env, *min-redis-env]
+      SERVER_PORT: "8080"
+      OTEL_SERVICE_NAME: "gateway"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=gateway,service.namespace=horizon,deployment.environment=${HORIZON_ENV:-local-min}"
+      HORIZON_UPSTREAM_TRENDS_URL: "http://trends-service:8082"
+      HORIZON_UPSTREAM_INGESTION_URL: "http://ingestion-service:8083"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-300}"
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=32m
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── frontend ───────────────────────────
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/frontend:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-frontend
+    restart: unless-stopped
+    stop_grace_period: 10s
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      TZ: "${TZ:-UTC}"
+      NGINX_PORT: "8080"
+      NGINX_RESOLVER: "127.0.0.11"
+      HORIZON_GATEWAY_URL: "http://gateway:8080"
+      HORIZON_API_TIMEOUT: "120s"
+      HORIZON_CSP_CONNECT_SRC: "'self'"
+      HORIZON_HSTS_DIRECTIVE: ""
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=16m
+    deploy:
+      resources:
+        limits:
+          memory: 48m
+    logging: *default-logging
+    networks: [horizon]
+
+# =============================================================================
+networks:
+  horizon:
+    name: horizon
+    driver: bridge
+
+# =============================================================================
+#  Тома те же, что и в полном профиле: переключение между `make up` и
+#  `make up-min` не теряет данные PostgreSQL и не требует пересоздания схем.
+volumes:
+  postgres-data:
+    name: horizon-postgres-data
+  redpanda-data:
+    name: horizon-redpanda-data
+  ingestion-raw:
+    name: horizon-ingestion-raw

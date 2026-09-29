@@ -1,0 +1,69 @@
+# =====================================================================================
+#  Профиль `local` — запуск против docker-compose из deploy/compose.
+#
+#  Отличия от промышленного профиля продиктованы задачей разработчика, а не удобством:
+#  видеть SQL, ловить таймауты быстрее, трассировать каждый запрос.
+# =====================================================================================
+
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/horizon?currentSchema=trends&ApplicationName=trends-service
+    username: trends_app
+    password: trends_dev_pwd
+
+  jpa:
+    show-sql: false
+    properties:
+      hibernate:
+        format_sql: true
+
+  kafka:
+    bootstrap-servers: localhost:19092    # внешний listener redpanda из compose
+    consumer:
+      # На локальной машине группы уникальны на запуск: перезапуск сервиса не должен
+      # наследовать смещения от предыдущей отладочной сессии.
+      auto-offset-reset: latest
+
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+
+horizon:
+  research:
+    # Короче промышленного: локально быстрее увидеть путь таймаута, чем ждать десять минут.
+    #
+    # Но через переменную, а не константой. Константа перекрывала `HORIZON_SAGA_TIMEOUT`, и это
+    # стоило живого прогона: профиль стенда — тот же `local`, локальная модель считает минуты, и
+    # анализ падал по таймауту на 85 % при выставленном в `.env` десятиминутном дедлайне. Настройка,
+    # которую документируют и которая не действует, хуже отсутствующей.
+    saga-timeout: ${HORIZON_SAGA_TIMEOUT:PT3M}
+    # Срок качественного режима здесь не укорачивается и берётся из основного файла. Профиль `local`
+    # — это и профиль стенда, и короткое умолчание, не перекрытое переменной, закрывало бы по
+    # таймауту каждый качественный запрос посреди честно идущего сбора — ровно та ловушка, что
+    # описана выше.
+    result-ttl: ${HORIZON_RESULT_TTL:PT10M}
+    cache-ttl: ${HORIZON_REPORT_CACHE_TTL:PT10M}
+    timeout-scan-interval: ${HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL:PT10S}
+  outbox:
+    poll-interval: PT0.2S
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: '*'
+  endpoint:
+    health:
+      show-details: always
+  tracing:
+    sampling:
+      probability: 1.0            # локально трассируем всё: выборка мешает отладке
+
+logging:
+  level:
+    dev.horizon.trends: DEBUG
+    org.springframework.orm.jpa: INFO
+    org.springframework.transaction: INFO
+    org.hibernate.SQL: DEBUG

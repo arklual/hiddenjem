@@ -1,0 +1,849 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/domain-analyzed.event.json",
+  "title": "DomainAnalyzed",
+  "description": "Результат работы аналитического движка. Единственная точка связи Python → Java (ADR-0016). Java не пересчитывает ни одной формулы: он валидирует инварианты и сохраняет отчёт.",
+  "type": "object",
+  "required": [
+    "researchRequestId",
+    "attempt",
+    "snapshotId",
+    "methodologyVersion",
+    "profileId",
+    "aggregator",
+    "documentsAnalyzed",
+    "candidatesEvaluated",
+    "windowFrom",
+    "windowTo",
+    "trends"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "attempt": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "snapshotId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "engine": {
+      "description": "Каким движком посчитан отчёт. Необязательно ради событий, выпущенных до появления второго движка: их отсутствие читается как `methodology`.",
+      "enum": [
+        "methodology",
+        "signals"
+      ],
+      "default": "methodology"
+    },
+    "methodologyVersion": {
+      "type": "string",
+      "examples": [
+        "em-1.0.0"
+      ]
+    },
+    "profileId": {
+      "type": "string",
+      "format": "uuid"
+    },
+    "aggregator": {
+      "enum": [
+        "WEIGHTED_GEOMETRIC",
+        "WEIGHTED_ARITHMETIC",
+        "MIN_BOUND"
+      ]
+    },
+    "reweightingScenarios": {
+      "description": "Сколько наборов весов перебрано при проверке устойчивости состава. Ноль означает, что проверка не проводилась, а не что состав неустойчив.",
+      "type": "integer",
+      "minimum": 0,
+      "default": 0
+    },
+    "embeddingModelId": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "examples": [
+        "tfidf-svd-384-v1"
+      ]
+    },
+    "documentsAnalyzed": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "candidatesEvaluated": {
+      "type": "integer",
+      "minimum": 0
+    },
+    "truncated": {
+      "type": "boolean",
+      "default": false
+    },
+    "suppressedByAnalyst": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Сколько тем скрыто по пометке аналитика «это не технология». Поле существует ради честности отбора: тема убрана из ТОП-N до отбора, поэтому её место занял следующий кандидат, и без этого числа отчёт выглядел бы так, будто скрытого не было вовсе. Молчаливый фильтр — худший вид фильтра: он производит уверенность вместо сведений."
+    },
+    "directionRecognized": {
+      "type": "boolean",
+      "default": true,
+      "description": "Понял ли движок, о каком направлении его спросили. false означает, что корпус размечен предметными кодами, но ни один документ не отнесён к направлению: формулировки нет в перекрёстном словаре, отбор вырождается в «лучшие N по сходству», и отчёт перестаёт зависеть от вопроса. Это не «в направлении ничего не происходит», а «мы не поняли вопроса». Поле необязательное: события, выпущенные до его появления, читаются как true — неразмеченный корпус не даёт оснований заявлять непонимание, а ложная оговорка обесценивает настоящие."
+    },
+    "directionSuggestions": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      },
+      "default": [],
+      "maxItems": 3,
+      "description": "Ближайшие известные формулировки направления. Непусто только при directionRecognized=false: без них оговорка «направление не распознано» — тупик, а разница между работающим продуктом и бесполезным здесь часто в одном слове, которое аналитику неоткуда узнать. Подсказка наугад не выдаётся: статьи без единого общего слова с запросом не предлагаются вовсе."
+    },
+    "windowFrom": {
+      "type": "string",
+      "format": "date"
+    },
+    "windowTo": {
+      "type": "string",
+      "format": "date"
+    },
+    "stageTimingsMs": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "number"
+      }
+    },
+    "trends": {
+      "type": "array",
+      "maxItems": 50,
+      "items": {
+        "$ref": "#/$defs/AnalyzedTrend"
+      }
+    },
+    "exclusions": {
+      "type": "array",
+      "maxItems": 20,
+      "default": [],
+      "description": "Логика исключения, которую ТЗ требует показывать: зрелые тренды, массово внедрённые технологии, стандарты, маркетинговый хайп и информационный шум — с числом и примерами. До этого поля отсев существовал только счётчиками в метриках, то есть как число без имён, которое аналитик не может проверить.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "code",
+          "reason",
+          "count"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 40,
+            "description": "Стадия конвейера, она же код причины."
+          },
+          "reason": {
+            "type": "string",
+            "maxLength": 300,
+            "description": "Формулировка для читателя, по-русски."
+          },
+          "count": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "examples": {
+            "type": "array",
+            "maxItems": 5,
+            "items": {
+              "type": "string",
+              "maxLength": 160
+            }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "AnalyzedTrend": {
+      "type": "object",
+      "required": [
+        "rank",
+        "trendKey",
+        "title",
+        "definition",
+        "motivation",
+        "score",
+        "confidence",
+        "lowEvidence",
+        "indicators",
+        "lifecycleStage",
+        "firstMentionYear",
+        "totalDocuments",
+        "timeline",
+        "evidence"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "rank": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50
+        },
+        "rankStability": {
+          "description": "Лучшее и худшее место темы при разумных изменениях весов индикаторов. Веса выбраны экспертно, и без этого диапазона утверждение о месте нельзя отличить от следствия этого выбора. Отсутствует, если проверка не проводилась.",
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "best",
+            "worst"
+          ],
+          "properties": {
+            "best": {
+              "type": "integer",
+              "minimum": 1
+            },
+            "worst": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "directionShare": {
+          "description": "Доля документов темы, отнесённых источниками к запрошенному направлению. Отсутствует, когда отбор шёл не по предметным кодам: там та же величина означает сходство с запросом, а не долю, и выдавать одно за другое нельзя.",
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "trendKey": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160,
+          "description": "Стабильный ключ темы — нормализованный канонический термин"
+        },
+        "origin": {
+          "enum": [
+            "corpus",
+            "model"
+          ],
+          "default": "corpus",
+          "description": "Откуда взялось имя темы. `corpus` — извлечено из собранных документов. `model` — названо генеративной моделью и подтверждено внешними источниками: измеренная активность плюс настоящие работы в доказательной базе (ТЗ §3.1 — выдача не формируется исключительно на основании знаний модели). Отсутствие поля читается как `corpus`: события, выпущенные до появления второго источника кандидатов."
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        },
+        "definition": {
+          "type": "string",
+          "minLength": 1
+        },
+        "aliases": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "default": []
+        },
+        "motivation": {
+          "$ref": "#/$defs/Motivation"
+        },
+        "caseExample": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CaseExample"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "score": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 100
+        },
+        "confidence": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "lowEvidence": {
+          "type": "boolean"
+        },
+        "indicators": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/IndicatorScore"
+          }
+        },
+        "signals": {
+          "description": "Из чего сложился балл у движка `signals`: вклад каждого признака в сумму. Отсутствует у движка `methodology` — там балл сложен из индикаторов, и они лежат рядом, в `indicators`.",
+          "$ref": "#/$defs/SignalScore"
+        },
+        "lifecycleStage": {
+          "enum": [
+            "EMBRYONIC",
+            "EMERGING",
+            "ACCELERATING",
+            "MATURING"
+          ]
+        },
+        "firstMentionYear": {
+          "description": "Первый достоверный год темы по BRULE-2: не меньше двух документов из не меньше чем двух организаций. Не год первого упоминания вообще — одиночные упоминания бывают раньше, по эталонному корпусу у 71 темы из 90.",
+          "type": "integer",
+          "minimum": 1900,
+          "maximum": 2100
+        },
+        "totalDocuments": {
+          "type": "integer",
+          "minimum": 1
+        },
+        "burst": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Burst"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "timeline": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/TimelinePoint"
+          }
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 20,
+          "items": {
+            "$ref": "#/$defs/Evidence"
+          },
+          "description": "Инвариант BR-A6: тренд без доказательств не публикуется"
+        },
+        "lowCredibilityOnly": {
+          "type": "boolean",
+          "default": false,
+          "description": "Все источники темы низкой доверенности. ТЗ: такие сведения «не должны быть единственным основанием для включения технологии в итоговую выдачу… либо сопровождаться отметкой о пониженной доверенности». Отметка — это поле; полное отсутствие научно-технической основы отсекается раньше, в конвейере."
+        },
+        "localization": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "Русский слой карточки (ADR-0017). Оригинал не заменяется, а дополняется: ТЗ прямо требует сохранить оригинальное название, ссылку, дату и язык источника. Отсутствует, когда сервис моделей выключен или недоступен — отчёт при этом полон, но по-английски.",
+          "properties": {
+            "title": {
+              "type": "string",
+              "maxLength": 300
+            },
+            "titleModel": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80,
+              "description": "Модель, переведшая название. Раскрытие по ТЗ §3.1: «обязательное раскрытие формата выбора модели для конкретного ответа»."
+            },
+            "titleMode": {
+              "enum": [
+                "MACHINE",
+                "GENERATIVE",
+                null
+              ],
+              "description": "Вид обработки, который отмечается возле строки. ТЗ различает автоматический перевод и генеративное резюме, и различие несёт разную надёжность."
+            },
+            "definition": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "problem": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "benefit": {
+              "type": "string",
+              "maxLength": 2000
+            },
+            "evidenceTitles": {
+              "type": "array",
+              "maxItems": 20,
+              "items": {
+                "type": "string",
+                "maxLength": 600
+              },
+              "description": "Русские названия источников по порядку элементов evidence."
+            },
+            "textModel": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 80
+            },
+            "textMode": {
+              "enum": [
+                "MACHINE",
+                "GENERATIVE",
+                null
+              ]
+            },
+            "statement": {
+              "type": "string",
+              "maxLength": 600,
+              "description": "Тема, сформулированная как тренд: одно русское предложение о том, что меняется. Генеративный пересказ по фрагментам источников темы и её ряду по годам; числа сверены со входом."
+            },
+            "statementModel": {
+              "type": "string",
+              "maxLength": 80,
+              "description": "Модель, сформулировавшая тренд (раскрытие по ТЗ §3.1)"
+            }
+          }
+        },
+        "explanation": {
+          "type": "array",
+          "maxItems": 8,
+          "description": "Почему тема — слабый сигнал и почему у неё такая уверенность: строки «заголовок — пояснение», собранные из голосов экспертной стадии, вкладов в балл, расчёта уверенности и источников карточки.",
+          "items": {
+            "type": "object",
+            "required": [
+              "title",
+              "text"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "title": {
+                "type": "string",
+                "maxLength": 80
+              },
+              "text": {
+                "type": "string",
+                "maxLength": 1200
+              }
+            }
+          }
+        }
+      }
+    },
+    "SignalScore": {
+      "type": "object",
+      "description": "Балл темы у движка внешних признаков и его разложение по признакам обученной модели.",
+      "required": [
+        "modelVersion",
+        "external",
+        "contributions"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "modelVersion": {
+          "type": "string",
+          "description": "Версия артефакта модели, которым посчитан балл.",
+          "maxLength": 100
+        },
+        "raw": {
+          "type": "number",
+          "description": "Сумма весов до связки: по ней видно, насколько уверенно высказалась модель."
+        },
+        "external": {
+          "type": "boolean",
+          "description": "Были ли у темы внешние признаки. `false` — балл собран только по корпусной части: источник промолчал, отказал или тема не попала в бюджет опроса."
+        },
+        "missingFeatures": {
+          "type": "array",
+          "description": "Признаки, которых не было. Отсутствие — не ноль: вклад такого признака равен нулю, но наблюдением это не является.",
+          "items": {
+            "type": "string"
+          }
+        },
+        "contributions": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "$ref": "#/$defs/SignalContribution"
+          }
+        }
+      }
+    },
+    "SignalContribution": {
+      "type": "object",
+      "description": "Вклад одного признака в балл темы: `weight × normalized`.",
+      "required": [
+        "feature",
+        "normalized",
+        "weight",
+        "contribution"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "feature": {
+          "type": "string",
+          "maxLength": 100
+        },
+        "value": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Наблюдённое значение; `null` — признака не было."
+        },
+        "normalized": {
+          "type": "number",
+          "description": "Значение после преобразования и нормировки артефакта."
+        },
+        "weight": {
+          "type": "number"
+        },
+        "contribution": {
+          "type": "number"
+        }
+      }
+    },
+    "IndicatorScore": {
+      "type": "object",
+      "required": [
+        "name",
+        "value",
+        "weight",
+        "multiplier",
+        "shortfallShare"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "name": {
+          "enum": [
+            "novelty",
+            "growth",
+            "diffusion",
+            "weakness",
+            "coherence",
+            "impact"
+          ]
+        },
+        "value": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "multiplier": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "value^weight; произведение множителей × 100 = score"
+        },
+        "shortfallShare": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1,
+          "description": "Нормированная доля недобора: что сильнее ограничивает балл"
+        },
+        "explanation": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 500
+        },
+        "diagnostics": {
+          "type": "object",
+          "description": "Сырые величины: slope, r2, orgCount, entropy, patentRatio…"
+        }
+      }
+    },
+    "Motivation": {
+      "type": "object",
+      "required": [
+        "problem",
+        "benefit"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "problem": {
+          "type": "string",
+          "minLength": 1
+        },
+        "benefit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "attributions": {
+          "type": "array",
+          "default": [],
+          "items": {
+            "type": "object",
+            "required": [
+              "statement",
+              "evidenceIndex"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "statement": {
+                "enum": [
+                  "problem",
+                  "benefit"
+                ]
+              },
+              "evidenceIndex": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "sentence": {
+                "description": "Предложение, взятое из этого документа. Формулировка склеивается из предложений разных статей; без привязки к предложению ссылка указывает на абзац целиком.",
+                "type": [
+                  "string",
+                  "null"
+                ],
+                "maxLength": 1000
+              }
+            }
+          }
+        }
+      }
+    },
+    "CaseExample": {
+      "type": "object",
+      "required": [
+        "organization",
+        "evidenceIndex"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "organization": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 300
+        },
+        "organizationType": {
+          "enum": [
+            "COMPANY",
+            "UNIVERSITY",
+            "RESEARCH_INSTITUTE",
+            "GOVERNMENT",
+            "NONPROFIT"
+          ]
+        },
+        "basis": {
+          "description": "Какое из трёх правил §8 подобрало пример: патент с корпоративным правообладателем, публикация с корпоративной аффилиацией или академическая группа. Веса доказательства у них разные.",
+          "enum": [
+            "PATENT",
+            "CORPORATE_PUBLICATION",
+            "ACADEMIC_GROUP"
+          ]
+        },
+        "country": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2
+        },
+        "summary": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        },
+        "evidenceIndex": {
+          "type": "integer",
+          "minimum": 0,
+          "description": "Индекс в массиве evidence — трассируемость кейса"
+        }
+      }
+    },
+    "Burst": {
+      "type": "object",
+      "required": [
+        "startPeriod",
+        "weight"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "startPeriod": {
+          "type": "string",
+          "examples": [
+            "2023",
+            "2023-Q2"
+          ]
+        },
+        "weight": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "TimelinePoint": {
+      "type": "object",
+      "required": [
+        "period",
+        "documentCount"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "period": {
+          "type": "string",
+          "examples": [
+            "2024",
+            "2024-Q1"
+          ]
+        },
+        "documentCount": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "dov": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Degree of Visibility (Yoon 2012)"
+        },
+        "dod": {
+          "type": [
+            "number",
+            "null"
+          ],
+          "description": "Degree of Diffusion (Yoon 2012)"
+        }
+      }
+    },
+    "Evidence": {
+      "type": "object",
+      "required": [
+        "sourceId",
+        "sourceClass",
+        "title",
+        "publishedOn",
+        "url",
+        "relevance"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "sourceId": {
+          "type": "string",
+          "maxLength": 48
+        },
+        "sourceClass": {
+          "enum": [
+            "PREPRINT",
+            "JOURNAL_ARTICLE",
+            "PATENT",
+            "CODE_REPOSITORY",
+            "NEWS",
+            "ANALYST_REPORT",
+            "STANDARD"
+          ]
+        },
+        "externalId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200
+        },
+        "documentId": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "format": "uuid"
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1
+        },
+        "authors": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 600
+        },
+        "organization": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 400
+        },
+        "organizationCountry": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2
+        },
+        "publishedOn": {
+          "type": "string",
+          "format": "date"
+        },
+        "url": {
+          "type": "string",
+          "minLength": 1
+        },
+        "doi": {
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "citationCount": {
+          "type": [
+            "integer",
+            "null"
+          ],
+          "minimum": 0
+        },
+        "relevance": {
+          "type": "number",
+          "minimum": 0,
+          "maximum": 1
+        },
+        "snippet": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 1000
+        },
+        "language": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 2,
+          "description": "Язык оригинала (ISO 639-1). ТЗ требует показывать его у каждого источника: русскоязычное резюме зарубежного материала имеет смысл только вместе с указанием, с какого языка оно сделано."
+        },
+        "credibility": {
+          "enum": [
+            "HIGH",
+            "MEDIUM",
+            "LOW"
+          ],
+          "default": "MEDIUM",
+          "description": "Уровень доверенности источника — требование ТЗ к отображению каждого источника. Выводится правилами `domain/credibility.py` от класса источника и его хоста: официальный домен государственного или научного учреждения сильнее класса в обе стороны."
+        },
+        "credibilityBasis": {
+          "type": [
+            "string",
+            "null"
+          ],
+          "maxLength": 200,
+          "description": "Правило, присвоившее уровень, словами. ТЗ допускает показывать «уровень доверенности либо критерии его определения»; ярлык без основания читатель проверить не может, поэтому показываются оба."
+        },
+        "independent": {
+          "type": "boolean",
+          "default": true,
+          "description": "Является ли документ самостоятельным свидетельством. false у перепечаток пресс-релизов, соцсетей и личных площадок: десять сайтов с одним релизом — это один источник, а не десять."
+        }
+      }
+    }
+  }
+}

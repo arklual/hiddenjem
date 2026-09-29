@@ -1,0 +1,37 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>Wired Enterprise</title>
+    <link>https://wired.example/enterprise</link>
+    <description>Enterprise technology news</description>
+    <language>en-us</language>
+    <lastBuildDate>Fri, 01 Mar 2026 10:00:00 GMT</lastBuildDate>
+
+    <item>
+      <title>Speculative decoding cuts inference latency in half</title>
+      <link>https://wired.example/enterprise/speculative-decoding?utm_source=rss&amp;utm_campaign=feed</link>
+      <guid isPermaLink="false">tag:wired.example,2024:enterprise/speculative-decoding</guid>
+      <pubDate>Tue, 05 Mar 2024 09:00:00 GMT</pubDate>
+      <dc:creator>Marina Volkova</dc:creator>
+      <category>AI infrastructure</category>
+      <category>Inference</category>
+      <description>&lt;p&gt;A draft model proposes tokens &amp;amp; a larger model verifies them in one pass.&lt;/p&gt;&lt;p&gt;Vendors report &lt;strong&gt;2x&lt;/strong&gt; throughput.&lt;/p&gt;&lt;a href="https://wired.example/enterprise/speculative-decoding"&gt;Read more&lt;/a&gt;&lt;img src="https://wired.example/px.gif?id=91827" width="1" height="1"/&gt;</description>
+    </item>
+
+    <item>
+      <title>Quarterly earnings beat analyst expectations</title>
+      <link>https://wired.example/enterprise/earnings-q1</link>
+      <guid isPermaLink="false">tag:wired.example,2024:enterprise/earnings-q1</guid>
+      <pubDate>Wed, 17 Apr 2024 14:30:00 GMT</pubDate>
+      <dc:creator>Marina Volkova</dc:creator>
+      <description>The company reported revenue above guidance for the third consecutive quarter.</description>
+    </item>
+
+    <item>
+      <title>Open-source draft models make speculative decoding practical</title>
+      <link>https://wired.example/enterprise/open-draft-models</link>
+      <guid isPermaLink="false">tag:wired.example,2024:enterprise/open-draft-models</guid>
+      <description>Community checkpoints now cover the most common target models.</description>
+    </item>
+  </channel>
+</rss>

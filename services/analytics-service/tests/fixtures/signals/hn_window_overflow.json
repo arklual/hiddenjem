@@ -1,0 +1,26 @@
+{
+ "exhaustive": {
+  "nbHits": false
+ },
+ "exhaustiveNbHits": false,
+ "hits": [],
+ "hitsPerPage": 0,
+ "nbHits": 17879,
+ "nbPages": 0,
+ "page": 0,
+ "params": "query=%22transformer%22&numericFilters=created_at_i%3E%3D1514764800%2Ccreated_at_i%3C1798761600&hitsPerPage=0&advancedSyntax=true&analyticsTags=backend&typoTolerance=false&removeWordsIfNoResults=none",
+ "processingTimeMS": 8,
+ "processingTimingsMS": {
+  "_request": {
+   "queue": 71,
+   "roundTrip": 28
+  },
+  "fetch": {
+   "scanning": 6,
+   "total": 7
+  },
+  "total": 8
+ },
+ "query": "\"transformer\"",
+ "serverTimeMS": 79
+}

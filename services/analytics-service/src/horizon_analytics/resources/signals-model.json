@@ -1,0 +1,126 @@
+{
+ "schema": "horizon.signals-model/1",
+ "version": "2026-09-20.1",
+ "trained_on": "2026-09-20",
+ "link": "logistic",
+ "bias": -0.13322624102243716,
+ "features": [
+  {
+   "name": "corpus.documents",
+   "weight": 0.0,
+   "transform": "identity",
+   "center": 0.0,
+   "scale": 1.0
+  },
+  {
+   "name": "corpus.documents_last_year",
+   "weight": 0.0,
+   "transform": "identity",
+   "center": 0.0,
+   "scale": 1.0
+  },
+  {
+   "name": "corpus.recent_two_year_share",
+   "weight": 0.0,
+   "transform": "identity",
+   "center": 0.0,
+   "scale": 1.0
+  },
+  {
+   "name": "corpus.growth_slope",
+   "weight": 0.0,
+   "transform": "identity",
+   "center": 0.0,
+   "scale": 1.0
+  },
+  {
+   "name": "openalex.works_window_total",
+   "weight": -0.3490050632123996,
+   "transform": "log1p",
+   "center": 3.8017342708557442,
+   "scale": 3.1655058350197463
+  },
+  {
+   "name": "openalex.works_last_year",
+   "weight": 0.3228993201145914,
+   "transform": "log1p",
+   "center": 2.9501327225140623,
+   "scale": 2.74569763298969
+  },
+  {
+   "name": "openalex.recent_two_year_share",
+   "weight": 0.07867802284286544,
+   "transform": "identity",
+   "center": 0.5857544287884452,
+   "scale": 0.2556033577137319
+  },
+  {
+   "name": "openalex.distinct_institutions",
+   "weight": -0.7828958401593299,
+   "transform": "log1p",
+   "center": 3.0560860728372563,
+   "scale": 2.1689595838117297
+  },
+  {
+   "name": "openalex.top_institution_share",
+   "weight": -0.2432263084111961,
+   "transform": "identity",
+   "center": 0.11766951843180308,
+   "scale": 0.20510886254429356
+  },
+  {
+   "name": "hackernews.mentions_window_total",
+   "weight": -0.7457678344597066,
+   "transform": "log1p",
+   "center": 1.6178794225838216,
+   "scale": 2.0971300526036485
+  },
+  {
+   "name": "hackernews.mentions_last_year",
+   "weight": 0.21664257474728396,
+   "transform": "log1p",
+   "center": 0.7832444203744371,
+   "scale": 1.4206834786188243
+  },
+  {
+   "name": "hackernews.recent_two_year_share",
+   "weight": 0.32508407543966517,
+   "transform": "identity",
+   "center": 0.31676544874856094,
+   "scale": 0.264333825056507
+  },
+  {
+   "name": "wikipedia.exists",
+   "weight": 0.5984143661091321,
+   "transform": "identity",
+   "center": 0.10483870967741936,
+   "scale": 0.3063454824713324
+  },
+  {
+   "name": "wikipedia.age_days",
+   "weight": -0.09778026968029631,
+   "transform": "log1p",
+   "center": 8.59427662909309,
+   "scale": 0.4210145820772602
+  },
+  {
+   "name": "wikipedia.size_bytes",
+   "weight": 0.2168782148796672,
+   "transform": "log1p",
+   "center": 10.653739735698341,
+   "scale": 0.37787922556352105
+  },
+  {
+   "name": "wikipedia.pageviews_12m",
+   "weight": -0.2919501722557401,
+   "transform": "log1p",
+   "center": 11.088170831998259,
+   "scale": 0.563676767850171
+  }
+ ],
+ "holdout": {
+  "metric": "roc_auc",
+  "value": 0.724,
+  "size": 248
+ }
+}

@@ -1,0 +1,16 @@
+# Файлы, не попадающие в упакованный чарт (helm package).
+.DS_Store
+.git/
+.gitignore
+.idea/
+.vscode/
+*.tmproj
+*.swp
+*.bak
+*.tgz
+# Тесты чарта и локальные значения — не для дистрибуции.
+tests/
+ci/
+values-local.yaml
+values-*.local.yaml
+*.orig

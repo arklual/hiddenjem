@@ -1,0 +1,216 @@
+{
+ "meta": {
+  "count": 504,
+  "db_response_time_ms": 668,
+  "page": 1,
+  "per_page": 200,
+  "groups_count": 37,
+  "x_query": {
+   "oql": "works where title/abstract has (stemmed \"analog in-memory computing\")\ngroup by institution country",
+   "oqo": {
+    "get_rows": "works",
+    "filter_rows": [
+     {
+      "column_id": "title_and_abstract.search",
+      "value": "\"analog in-memory computing\"",
+      "operator": "has"
+     }
+    ],
+    "group_by": [
+     {
+      "column_id": "authorships.institutions.country_code"
+     }
+    ]
+   },
+   "url": "/works?filter=title_and_abstract.search:%22analog in-memory computing%22&group_by=authorships.institutions.country_code"
+  },
+  "cost_usd": 0.0001
+ },
+ "group_by": [
+  {
+   "key": "https://openalex.org/countries/US",
+   "key_display_name": "United States",
+   "count": 135
+  },
+  {
+   "key": "https://openalex.org/countries/CH",
+   "key_display_name": "Switzerland",
+   "count": 57
+  },
+  {
+   "key": "https://openalex.org/countries/IT",
+   "key_display_name": "Italy",
+   "count": 46
+  },
+  {
+   "key": "https://openalex.org/countries/CN",
+   "key_display_name": "China",
+   "count": 38
+  },
+  {
+   "key": "https://openalex.org/countries/DE",
+   "key_display_name": "Germany",
+   "count": 33
+  },
+  {
+   "key": "https://openalex.org/countries/BE",
+   "key_display_name": "Belgium",
+   "count": 30
+  },
+  {
+   "key": "https://openalex.org/countries/KR",
+   "key_display_name": "South Korea",
+   "count": 22
+  },
+  {
+   "key": "https://openalex.org/countries/IN",
+   "key_display_name": "India",
+   "count": 19
+  },
+  {
+   "key": "https://openalex.org/countries/JP",
+   "key_display_name": "Japan",
+   "count": 17
+  },
+  {
+   "key": "https://openalex.org/countries/GB",
+   "key_display_name": "United Kingdom",
+   "count": 12
+  },
+  {
+   "key": "https://openalex.org/countries/TW",
+   "key_display_name": "Taiwan",
+   "count": 9
+  },
+  {
+   "key": "https://openalex.org/countries/FR",
+   "key_display_name": "France",
+   "count": 8
+  },
+  {
+   "key": "https://openalex.org/countries/HK",
+   "key_display_name": "Hong Kong",
+   "count": 8
+  },
+  {
+   "key": "https://openalex.org/countries/ES",
+   "key_display_name": "Spain",
+   "count": 6
+  },
+  {
+   "key": "https://openalex.org/countries/NL",
+   "key_display_name": "Netherlands",
+   "count": 5
+  },
+  {
+   "key": "https://openalex.org/countries/SG",
+   "key_display_name": "Singapore",
+   "count": 4
+  },
+  {
+   "key": "https://openalex.org/countries/SA",
+   "key_display_name": "Saudi Arabia",
+   "count": 3
+  },
+  {
+   "key": "https://openalex.org/countries/SE",
+   "key_display_name": "Sweden",
+   "count": 3
+  },
+  {
+   "key": "https://openalex.org/countries/CA",
+   "key_display_name": "Canada",
+   "count": 2
+  },
+  {
+   "key": "https://openalex.org/countries/DK",
+   "key_display_name": "Denmark",
+   "count": 2
+  },
+  {
+   "key": "https://openalex.org/countries/GR",
+   "key_display_name": "Greece",
+   "count": 2
+  },
+  {
+   "key": "https://openalex.org/countries/IE",
+   "key_display_name": "Ireland",
+   "count": 2
+  },
+  {
+   "key": "https://openalex.org/countries/RU",
+   "key_display_name": "Russia",
+   "count": 2
+  },
+  {
+   "key": "https://openalex.org/countries/TR",
+   "key_display_name": "Turkey",
+   "count": 2
+  },
+  {
+   "key": "https://openalex.org/countries/AE",
+   "key_display_name": "United Arab Emirates",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/BD",
+   "key_display_name": "Bangladesh",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/CZ",
+   "key_display_name": "Czechia",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/DZ",
+   "key_display_name": "Algeria",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/EE",
+   "key_display_name": "Estonia",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/EG",
+   "key_display_name": "Egypt",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/ET",
+   "key_display_name": "Ethiopia",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/FI",
+   "key_display_name": "Finland",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/HU",
+   "key_display_name": "Hungary",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/IL",
+   "key_display_name": "Israel",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/LB",
+   "key_display_name": "Lebanon",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/LK",
+   "key_display_name": "Sri Lanka",
+   "count": 1
+  },
+  {
+   "key": "https://openalex.org/countries/MO",
+   "key_display_name": "Macao",
+   "count": 1
+  }
+ ]
+}

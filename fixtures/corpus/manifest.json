@@ -1,0 +1,410 @@
+{
+  "version": "1.0.0",
+  "generator": "generate_corpus.py",
+  "generatorSeed": 20260805,
+  "namespace": "7b03e4dd-4bb0-5115-a629-5ae786872a29",
+  "schemaRef": "contracts/schemas/document-ingested.event.json",
+  "documentsFile": "documents.jsonl",
+  "documentCount": 1244,
+  "windowFrom": "2018-01-01",
+  "windowTo": "2025-12-31",
+  "contentHash": "57ae062f4c9322d17384f29980c961594c359ea0f69cde52ce7b3e21261a28bd",
+  "contentDigest": "863b47b611501e16dd96801f0539fc6a493be8f9399da2d1e7dfba0086ee6afe",
+  "documentsSha256": "a6d8d2be14aed3965b30e5e352891e27542f601031ebcff8d032dd276d29f9a8",
+  "countsBySourceClass": {
+    "PREPRINT": 341,
+    "JOURNAL_ARTICLE": 414,
+    "PATENT": 170,
+    "CODE_REPOSITORY": 147,
+    "NEWS": 172
+  },
+  "countsBySourceId": {
+    "arxiv": 341,
+    "crossref": 237,
+    "github": 147,
+    "openalex": 177,
+    "patentsview": 170,
+    "rss": 172
+  },
+  "countsByYear": {
+    "2018": 14,
+    "2019": 43,
+    "2020": 81,
+    "2021": 126,
+    "2022": 160,
+    "2023": 210,
+    "2024": 273,
+    "2025": 337
+  },
+  "noiseNgrams": [
+    "novel approach",
+    "proposed method",
+    "experimental results",
+    "state of the art",
+    "significant improvement",
+    "extensive experiments",
+    "future work"
+  ],
+  "topics": [
+    {
+      "slug": "large-language-model",
+      "term": "large language model",
+      "acronym": "LLM",
+      "domain": "ai",
+      "firstYear": 2019,
+      "profile": "maturing",
+      "docCount": 112,
+      "expectation": "MAINSTREAM (AI control) — largest recent volume in its domain, weakness 0"
+    },
+    {
+      "slug": "retrieval-augmented-generation",
+      "term": "retrieval-augmented generation",
+      "acronym": "RAG",
+      "domain": "ai",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 42,
+      "expectation": "SECONDARY — strong growth but already loud; alias pair RAG must merge"
+    },
+    {
+      "slug": "state-space-model",
+      "term": "state space model",
+      "acronym": "SSM",
+      "domain": "ai",
+      "firstYear": 2022,
+      "profile": "accelerating",
+      "docCount": 24,
+      "expectation": "TOP weak signal — new (2022), steep growth, moderate volume; alias SSM must merge"
+    },
+    {
+      "slug": "speculative-decoding",
+      "term": "speculative decoding",
+      "acronym": null,
+      "domain": "ai",
+      "firstYear": 2023,
+      "profile": "accelerating",
+      "docCount": 16,
+      "expectation": "TOP weak signal — newest AI topic, steep slope, real industry pull"
+    },
+    {
+      "slug": "mechanistic-interpretability",
+      "term": "mechanistic interpretability",
+      "acronym": null,
+      "domain": "ai",
+      "firstYear": 2022,
+      "profile": "emerging",
+      "docCount": 18,
+      "expectation": "TOP weak signal — novel and growing, held back by impact (no patents)"
+    },
+    {
+      "slug": "mixture-of-experts",
+      "term": "mixture of experts",
+      "acronym": "MoE",
+      "domain": "ai",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 27,
+      "expectation": "SECONDARY — accelerating; alias MoE, high impact"
+    },
+    {
+      "slug": "federated-learning",
+      "term": "federated learning",
+      "acronym": "FL",
+      "domain": "ai",
+      "firstYear": 2018,
+      "profile": "maturing",
+      "docCount": 44,
+      "expectation": "MATURING — flat slope, growth ~0, excluded by BRULE-4"
+    },
+    {
+      "slug": "neural-architecture-search",
+      "term": "neural architecture search",
+      "acronym": "NAS",
+      "domain": "ai",
+      "firstYear": 2018,
+      "profile": "declining",
+      "docCount": 30,
+      "expectation": "DECLINING — negative slope zeroes growth, must be excluded"
+    },
+    {
+      "slug": "diffusion-model",
+      "term": "diffusion model",
+      "acronym": null,
+      "domain": "ai",
+      "firstYear": 2020,
+      "profile": "maturing",
+      "docCount": 46,
+      "expectation": "SECONDARY — second-largest AI volume, plateauing; weakness bites but does not zero"
+    },
+    {
+      "slug": "sparse-autoencoder",
+      "term": "sparse autoencoder",
+      "acronym": "SAE",
+      "domain": "ai",
+      "firstYear": 2023,
+      "profile": "embryonic",
+      "docCount": 9,
+      "expectation": "EMBRYONIC — 9 documents, 3 source classes; must carry the low-confidence flag (BRULE-6)"
+    },
+    {
+      "slug": "post-quantum-cryptography",
+      "term": "post-quantum cryptography",
+      "acronym": "PQC",
+      "domain": "security",
+      "firstYear": 2019,
+      "profile": "accelerating",
+      "docCount": 35,
+      "expectation": "SECONDARY — steep growth and patents, but loud enough that weakness caps it"
+    },
+    {
+      "slug": "confidential-computing",
+      "term": "confidential computing",
+      "acronym": "TEE",
+      "domain": "security",
+      "firstYear": 2020,
+      "profile": "accelerating",
+      "docCount": 26,
+      "expectation": "SECONDARY — industry-heavy; alias TEE exercises acronym mining"
+    },
+    {
+      "slug": "software-bill-of-materials",
+      "term": "software bill of materials",
+      "acronym": "SBOM",
+      "domain": "security",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 22,
+      "expectation": "TOP weak signal — growth and diffusion high, impact limited (no patents)"
+    },
+    {
+      "slug": "zero-trust-architecture",
+      "term": "zero trust architecture",
+      "acronym": "ZTA",
+      "domain": "security",
+      "firstYear": 2019,
+      "profile": "maturing",
+      "docCount": 80,
+      "expectation": "MAINSTREAM (security control) — largest recent volume in its domain, weakness 0"
+    },
+    {
+      "slug": "adversarial-machine-learning",
+      "term": "adversarial machine learning",
+      "acronym": null,
+      "domain": "security",
+      "firstYear": 2018,
+      "profile": "declining",
+      "docCount": 26,
+      "expectation": "DECLINING — peaked 2020-2021, negative slope"
+    },
+    {
+      "slug": "ebpf-runtime-security",
+      "term": "eBPF runtime security",
+      "acronym": null,
+      "domain": "security",
+      "firstYear": 2022,
+      "profile": "emerging",
+      "docCount": 16,
+      "expectation": "TOP weak signal — very new, small, but evidence spans all five source classes"
+    },
+    {
+      "slug": "quantum-error-correction",
+      "term": "quantum error correction",
+      "acronym": "QEC",
+      "domain": "quantum",
+      "firstYear": 2020,
+      "profile": "accelerating",
+      "docCount": 24,
+      "expectation": "SECONDARY — accelerating with the highest impact in quantum"
+    },
+    {
+      "slug": "neutral-atom-qubit",
+      "term": "neutral atom qubit",
+      "acronym": null,
+      "domain": "quantum",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 17,
+      "expectation": "TOP weak signal — new hardware line, small but diffuse"
+    },
+    {
+      "slug": "quantum-machine-learning",
+      "term": "quantum machine learning",
+      "acronym": "QML",
+      "domain": "quantum",
+      "firstYear": 2018,
+      "profile": "declining",
+      "docCount": 26,
+      "expectation": "DECLINING — hype curve down; growth 0"
+    },
+    {
+      "slug": "topological-qubit",
+      "term": "topological qubit",
+      "acronym": null,
+      "domain": "quantum",
+      "firstYear": 2023,
+      "profile": "embryonic",
+      "docCount": 8,
+      "expectation": "BRULE-1 + BRULE-6 case — single 2023 document from one org, so the reliable first year is 2024; scores high but must be flagged low evidence"
+    },
+    {
+      "slug": "quantum-key-distribution",
+      "term": "quantum key distribution",
+      "acronym": "QKD",
+      "domain": "quantum",
+      "firstYear": 2018,
+      "profile": "maturing",
+      "docCount": 72,
+      "expectation": "MAINSTREAM (quantum control) — largest recent volume in its domain, weakness 0"
+    },
+    {
+      "slug": "protein-language-model",
+      "term": "protein language model",
+      "acronym": "PLM",
+      "domain": "bio",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 24,
+      "expectation": "TOP weak signal — cross-domain (AI x bio), patents, strong growth"
+    },
+    {
+      "slug": "prime-editing",
+      "term": "prime editing",
+      "acronym": null,
+      "domain": "bio",
+      "firstYear": 2019,
+      "profile": "accelerating",
+      "docCount": 30,
+      "expectation": "SECONDARY — accelerating with high impact but 2019 novelty penalty"
+    },
+    {
+      "slug": "single-cell-multiomics",
+      "term": "single-cell multiomics",
+      "acronym": null,
+      "domain": "bio",
+      "firstYear": 2019,
+      "profile": "maturing",
+      "docCount": 76,
+      "expectation": "MAINSTREAM (bio control) — largest recent volume in its domain, weakness 0"
+    },
+    {
+      "slug": "mrna-vaccine-platform",
+      "term": "mRNA vaccine platform",
+      "acronym": null,
+      "domain": "bio",
+      "firstYear": 2018,
+      "profile": "declining",
+      "docCount": 30,
+      "expectation": "DECLINING — 2020-2021 peak then fall; growth 0 despite huge citations"
+    },
+    {
+      "slug": "organ-on-a-chip",
+      "term": "organ-on-a-chip",
+      "acronym": "MPS",
+      "domain": "bio",
+      "firstYear": 2019,
+      "profile": "emerging",
+      "docCount": 24,
+      "expectation": "SECONDARY — steady emergence, moderate everything"
+    },
+    {
+      "slug": "zero-knowledge-rollup",
+      "term": "zero-knowledge rollup",
+      "acronym": "ZKR",
+      "domain": "fintech",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 24,
+      "expectation": "TOP weak signal — code-heavy diffusion, fast growth"
+    },
+    {
+      "slug": "account-abstraction",
+      "term": "account abstraction",
+      "acronym": "AA",
+      "domain": "fintech",
+      "firstYear": 2022,
+      "profile": "emerging",
+      "docCount": 18,
+      "expectation": "TOP weak signal by novelty; impact limited (no patents)"
+    },
+    {
+      "slug": "central-bank-digital-currency",
+      "term": "central bank digital currency",
+      "acronym": "CBDC",
+      "domain": "fintech",
+      "firstYear": 2020,
+      "profile": "maturing",
+      "docCount": 64,
+      "expectation": "MAINSTREAM (fintech control) — largest recent volume in its domain, weakness 0"
+    },
+    {
+      "slug": "decentralized-finance",
+      "term": "decentralized finance",
+      "acronym": "DeFi",
+      "domain": "fintech",
+      "firstYear": 2018,
+      "profile": "declining",
+      "docCount": 28,
+      "expectation": "DECLINING — 2021 peak then fall"
+    },
+    {
+      "slug": "solid-state-battery",
+      "term": "solid-state battery",
+      "acronym": "SSB",
+      "domain": "energy",
+      "firstYear": 2019,
+      "profile": "accelerating",
+      "docCount": 40,
+      "expectation": "SECONDARY — highest patent ratio in the corpus; impact anchor"
+    },
+    {
+      "slug": "sodium-ion-battery",
+      "term": "sodium-ion battery",
+      "acronym": "SIB",
+      "domain": "energy",
+      "firstYear": 2021,
+      "profile": "accelerating",
+      "docCount": 24,
+      "expectation": "TOP weak signal — new, patent-rich, industrially anchored"
+    },
+    {
+      "slug": "perovskite-tandem-solar-cell",
+      "term": "perovskite tandem solar cell",
+      "acronym": null,
+      "domain": "energy",
+      "firstYear": 2019,
+      "profile": "accelerating",
+      "docCount": 72,
+      "expectation": "MAINSTREAM (energy control) — largest recent volume in its domain, weakness 0"
+    },
+    {
+      "slug": "green-hydrogen-electrolysis",
+      "term": "green hydrogen electrolysis",
+      "acronym": "PEM",
+      "domain": "energy",
+      "firstYear": 2020,
+      "profile": "emerging",
+      "docCount": 26,
+      "expectation": "SECONDARY — industrial, patent-heavy, moderate growth"
+    },
+    {
+      "slug": "direct-air-capture",
+      "term": "direct air capture",
+      "acronym": "DAC",
+      "domain": "energy",
+      "firstYear": 2020,
+      "profile": "emerging",
+      "docCount": 20,
+      "expectation": "SECONDARY — small and diffuse, but slope too shallow for the top tier"
+    },
+    {
+      "slug": "small-modular-reactor",
+      "term": "small modular reactor",
+      "acronym": "SMR",
+      "domain": "energy",
+      "firstYear": 2019,
+      "profile": "emerging",
+      "docCount": 24,
+      "expectation": "SECONDARY — news-heavy, government affiliations"
+    }
+  ]
+}

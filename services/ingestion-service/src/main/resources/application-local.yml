@@ -1,0 +1,36 @@
+# Профиль local: по умолчанию включён только офлайновый эталонный источник — машина разработчика не
+# должна ходить во внешние API случайно, а показ обязан быть воспроизводимым.
+#
+# Значения приходят переменными, а не литералами. Литерал в профиле побеждает переменную окружения,
+# и это уже стоило нам трёх находок подряд (список источников CORS, лимиты запросов — и вот
+# коннекторы). Здесь оно выглядело так: оператор ставит HORIZON_SOURCE_RSS_ENABLED=true в .env
+# стенда, реестр источников показывает rss включённым, а служба его не включает — и в каждом отчёте
+# висит «источник недоступен» без всякого объяснения почему.
+#
+# Умолчания прежние: на машине разработчика ничего не меняется.
+horizon:
+  ingestion:
+    schedule-enabled: ${INGESTION_SCHEDULE_ENABLED:false}
+  connectors:
+    sources:
+      arxiv: { enabled: "${HORIZON_SOURCE_ARXIV_ENABLED:false}" }
+      alphaxiv: { enabled: "${HORIZON_SOURCE_ALPHAXIV_ENABLED:false}" }
+      openalex: { enabled: "${HORIZON_SOURCE_OPENALEX_ENABLED:false}" }
+      crossref: { enabled: "${HORIZON_SOURCE_CROSSREF_ENABLED:false}" }
+      uspto: { enabled: "${HORIZON_SOURCE_USPTO_ENABLED:false}" }
+      github: { enabled: "${HORIZON_SOURCE_GITHUB_ENABLED:false}" }
+      rss: { enabled: "${HORIZON_SOURCE_RSS_ENABLED:false}" }
+      habr: { enabled: "${HORIZON_SOURCE_HABR_ENABLED:false}" }
+      industry: { enabled: "${HORIZON_SOURCE_INDUSTRY_ENABLED:false}" }
+      globenewswire: { enabled: "${HORIZON_SOURCE_GLOBENEWSWIRE_ENABLED:false}" }
+      prnewswire: { enabled: "${HORIZON_SOURCE_PRNEWSWIRE_ENABLED:false}" }
+      producthunt: { enabled: "${HORIZON_SOURCE_PRODUCTHUNT_ENABLED:false}" }
+      edgar: { enabled: "${HORIZON_SOURCE_EDGAR_ENABLED:false}" }
+      ietf: { enabled: "${HORIZON_SOURCE_IETF_ENABLED:false}" }
+      sbir: { enabled: "${HORIZON_SOURCE_SBIR_ENABLED:false}" }
+      nsf: { enabled: "${HORIZON_SOURCE_NSF_ENABLED:false}" }
+      regulators: { enabled: "${HORIZON_SOURCE_REGULATORS_ENABLED:false}" }
+
+logging:
+  level:
+    dev.horizon.ingestion.connector: DEBUG

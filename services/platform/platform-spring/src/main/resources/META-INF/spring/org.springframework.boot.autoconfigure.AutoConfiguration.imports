@@ -1,0 +1,3 @@
+dev.horizon.platform.spring.config.PlatformAutoConfiguration
+dev.horizon.platform.spring.config.WebAutoConfiguration
+dev.horizon.platform.spring.messaging.MessagingAutoConfiguration

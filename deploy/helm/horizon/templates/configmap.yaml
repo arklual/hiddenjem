@@ -1,0 +1,54 @@
+{{/*
+=============================================================================
+  ConfigMap — несекретная конфигурация сервиса
+=============================================================================
+  Сюда попадает ТОЛЬКО то, что не является секретом. Пароли, ключи подписи
+  и токены внешних API живут в Secret, который наполняется из корпоративного
+  хранилища (NFR-S2, см. templates/externalsecret.yaml).
+  Признак ошибки: если значение хочется скрыть в выводе `helm get values` —
+  оно не должно быть здесь.
+=============================================================================
+*/}}
+{{- $root := . -}}
+{{- range $name, $rawSvc := .Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+data:
+  {{- /* Общие для всех сервисов настройки логирования и жизненного цикла.
+         Заданы здесь, а не в Deployment, чтобы правка не требовала
+         пересборки шаблона рабочей нагрузки. */}}
+  HORIZON_LOG_LEVEL: {{ $root.Values.global.logLevel | default "INFO" | quote }}
+  HORIZON_LOG_FORMAT: "json"
+  SPRING_PROFILES_ACTIVE: {{ $root.Values.global.springProfiles | default "k8s" | quote }}
+  SPRING_MAIN_BANNER_MODE: "off"
+  SERVER_SHUTDOWN: "graceful"
+  SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: "25s"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  {{- /* В проде подробности health наружу не отдаём: они раскрывают состав
+         инфраструктуры (NFR-S11). Пробы kubelet работают и без деталей. */}}
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "never"
+  MANAGEMENT_METRICS_TAGS_APPLICATION: "horizon"
+  {{- /* Гистограмма нужна для histogram_quantile: без неё правила SLO
+         и панели Duration на дашбордах пусты. Границы бакетов выставлены
+         вокруг порогов NFR-P1 (300 мс / 800 мс). */}}
+  MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILES_HISTOGRAM_HTTP_SERVER_REQUESTS: "true"
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_SERVER_REQUESTS: "50ms,100ms,200ms,300ms,500ms,800ms,1s,2s,5s"
+  MANAGEMENT_METRICS_DISTRIBUTION_MINIMUM_EXPECTED_VALUE_HTTP_SERVER_REQUESTS: "10ms"
+  MANAGEMENT_METRICS_DISTRIBUTION_MAXIMUM_EXPECTED_VALUE_HTTP_SERVER_REQUESTS: "10s"
+  {{- with $svc.config }}
+  {{- range $key, $value := . }}
+  {{ $key }}: {{ $value | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}
+{{- end }}

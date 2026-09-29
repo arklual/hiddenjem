@@ -1,0 +1,52 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/analyze-domain.command.json",
+  "title": "AnalyzeDomain",
+  "type": "object",
+  "required": ["researchRequestId", "attempt", "snapshotId", "normalizedQuery", "parameters", "profile"],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId": { "type": "string", "format": "uuid" },
+    "attempt":           { "type": "integer", "minimum": 1 },
+    "snapshotId":        { "type": "string", "format": "uuid" },
+    "query":             { "type": "string" },
+    "normalizedQuery":   { "type": "string" },
+    "engine": {
+      "description": "Каким движком считать отчёт. Движок один — `signals`: скоринг по внешним признакам поверх общего конвейера (отбор корпуса, извлечение, индикаторы). Движок методологии выведен из продукта; поле необязательно и оставлено ради команд, отправленных до этого, — `methodology` в них читается как `signals`.",
+      "enum": ["methodology", "signals"],
+      "default": "signals"
+    },
+    "parameters": {
+      "type": "object",
+      "required": ["topN", "yearsWindow"],
+      "additionalProperties": false,
+      "properties": {
+        "topN":           { "type": "integer", "minimum": 5, "maximum": 50 },
+        "yearsWindow":    { "type": "integer", "minimum": 3, "maximum": 15 },
+        "sourceClasses":  { "type": "array", "items": { "type": "string" } },
+        "minConfidence":  { "type": "number", "minimum": 0, "maximum": 1 },
+        "includeMature":  { "type": "boolean", "default": false },
+        "suppressedTrendKeys": {
+          "description": "Ключи тем, помеченных аналитиками организации как «не технология». Движок отбрасывает их до отбора в ТОП-N, поэтому освободившееся место занимает следующий кандидат.",
+          "type": "array",
+          "maxItems": 200,
+          "uniqueItems": true,
+          "items": { "type": "string", "minLength": 1, "maxLength": 160 }
+        }
+      }
+    },
+    "profile": {
+      "type": "object",
+      "required": ["profileId", "methodologyVersion", "aggregator", "weights", "parameters", "confidenceThreshold"],
+      "additionalProperties": false,
+      "properties": {
+        "profileId":           { "type": "string", "format": "uuid" },
+        "methodologyVersion":  { "type": "string" },
+        "aggregator":          { "enum": ["WEIGHTED_GEOMETRIC", "WEIGHTED_ARITHMETIC", "MIN_BOUND"] },
+        "weights":             { "type": "object", "additionalProperties": { "type": "number" } },
+        "parameters":          { "type": "object" },
+        "confidenceThreshold": { "type": "number", "minimum": 0, "maximum": 1 }
+      }
+    }
+  }
+}

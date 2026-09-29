@@ -1,0 +1,9 @@
+{
+  // Solution-style: this file lists no sources of its own, only references. `tsc --noEmit` against
+  // it therefore compiles NOTHING and exits zero — which is what the project's own typecheck did,
+  // reporting success while fourteen type errors sat in the app. The scripts use `tsc -b`, which
+  // walks the references and actually checks them; changing them back to `--noEmit` restores a gate
+  // that cannot fail.
+  "files": [],
+  "references": [{ "path": "./tsconfig.app.json" }, { "path": "./tsconfig.node.json" }]
+}

@@ -1,0 +1,210 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "horizon-analytics"
+version = "1.0.0"
+description = "Horizon analytics service — emerging technology trend detection engine (methodology em-1.0.0)"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+authors = [{ name = "Horizon Team" }]
+
+dependencies = [
+    "numpy>=1.26,<3",
+    "scipy>=1.11,<2",
+    "scikit-learn>=1.4,<2",
+    # 0.142 включает автотелеметрию и не стартует при OTLP по gRPC, как на стенде.
+    "fastapi>=0.110,<0.142",
+    "uvicorn[standard]>=0.27,<1",
+    "pydantic>=2.6,<3",
+    "pydantic-settings>=2.2,<3",
+    "aiokafka>=0.10,<1",
+    "asyncpg>=0.29,<1",
+    "httpx>=0.27,<1",
+    "prometheus-client>=0.20,<1",
+    "structlog>=24.1",
+    "orjson>=3.9,<4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0,<9",
+    "pytest-asyncio>=0.23,<1",
+    "pytest-cov>=4.1",
+    "hypothesis>=6.98,<7",
+    "ruff>=0.4,<1",
+    "black>=24.3,<26",
+    "mypy>=1.9,<2",
+    "jsonschema>=4.21,<5",
+    "freezegun>=1.4,<2",
+    "import-linter>=2.0,<3",
+]
+
+[project.scripts]
+horizon-analytics = "horizon_analytics.__main__:main"
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+zip-safe = false
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+horizon_analytics = ["py.typed", "domain/resources/*.txt", "resources/*.json"]
+
+# ───────────────────────────── ruff ─────────────────────────────
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+extend-exclude = [".venv"]
+
+[tool.ruff.lint]
+select = [
+    "E",    # pycodestyle errors
+    "W",    # pycodestyle warnings
+    "F",    # pyflakes
+    "I",    # isort
+    "N",    # pep8-naming
+    "UP",   # pyupgrade
+    "B",    # flake8-bugbear
+    "C4",   # comprehensions
+    "SIM",  # simplify
+    "RUF",  # ruff specific
+    "PTH",  # use pathlib
+    "TID",  # tidy imports
+    "D",    # pydocstyle
+]
+ignore = [
+    "D203",  # conflicts with D211
+    "D213",  # conflicts with D212
+    "E501",  # line length handled by black
+    "RUF001", # ambiguous unicode in string (Cyrillic is intentional)
+    "RUF002", # ambiguous unicode in docstring
+    "RUF003", # ambiguous unicode in comment
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104"]
+"src/horizon_analytics/domain/resources/*" = ["D"]
+
+[tool.ruff.lint.isort]
+known-first-party = ["horizon_analytics"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "parents"
+
+# ───────────────────────────── black ─────────────────────────────
+[tool.black]
+line-length = 100
+target-version = ["py312"]
+extend-exclude = "/(\\.venv|build|dist)/"
+
+# ───────────────────────────── mypy ─────────────────────────────
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unreachable = true
+warn_unused_ignores = true
+show_error_codes = true
+namespace_packages = true
+explicit_package_bases = true
+mypy_path = "src"
+plugins = []
+
+[[tool.mypy.overrides]]
+module = [
+    "sklearn.*",
+    "scipy.*",
+    "aiokafka.*",
+    "asyncpg.*",
+    "onnxruntime.*",
+    "prometheus_client.*",
+    "structlog.*",
+]
+ignore_missing_imports = true
+
+# ───────────────────────────── pytest ─────────────────────────────
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+addopts = "-q --strict-markers --strict-config"
+markers = [
+    "integration: requires external services (postgres/clickhouse/kafka); deselected by default",
+    "golden: snapshot tests against the golden corpus",
+    "property: hypothesis property based tests",
+]
+filterwarnings = ["error::DeprecationWarning:horizon_analytics.*"]
+
+[tool.coverage.run]
+source = ["src/horizon_analytics"]
+branch = true
+
+[tool.coverage.report]
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
+
+# ─────────────────────────────── границы слоёв ───────────────────────────────
+#
+# Питоновский движок — ядро продукта, и его слои до сих пор не проверял никто. `import-linter`
+# назывался в четырёх документах наравне с ArchUnit (NFR-M1, матрица трассируемости,
+# расширяемость, стратегия тестирования), но не был ни установлен, ни настроен. Четвёртый подряд
+# случай «объявлено, но не проверено» — после ArchUnit в двух службах, `hypothesis` и учёта
+# пропусков в гейте.
+#
+# Правила фиксируют существующее положение дел: слои здесь уже чисты. Ценность не в том, чтобы
+# что-то починить сейчас, а в том, что новый индикатор, агрегатор или нарратор нельзя будет
+# добавить «быстро» — протащив в домен FastAPI, HTTP-клиент или компоновочный корень. Расширяемые
+# точки перестают быть расширяемыми не одним решением, а десятком мелких срезаний угла.
+[tool.importlinter]
+root_package = "horizon_analytics"
+# Внешние пакеты нужны в графе: без этого запрет на FastAPI и драйвер базы в домене не проверялся
+# бы вовсе — а именно он тут главный.
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Слои ходят только вниз: вход → адаптеры → приложение → домен"
+type = "layers"
+layers = [
+    "horizon_analytics.api : horizon_analytics.worker : horizon_analytics.tools",
+    "horizon_analytics.adapters",
+    "horizon_analytics.application",
+    "horizon_analytics.domain",
+]
+
+[[tool.importlinter.contracts]]
+# Домен считает индикаторы и балл эмерджентности. Знающий про FastAPI или драйвер базы, он
+# перестаёт быть местом, где методология проверяется в одиночку, — и золотой корпус,
+# воспроизводимость и бэктест теряют смысл вместе с ним. Соблазн конкретный: у темы есть поля, у
+# ответа API — те же поля, и вернуть модель pydantic напрямую быстрее, чем писать преобразование.
+name = "Домен не знает про транспорт, хранилище и наблюдаемость"
+type = "forbidden"
+source_modules = ["horizon_analytics.domain"]
+forbidden_modules = [
+    "fastapi",
+    "starlette",
+    "pydantic",
+    "httpx",
+    "psycopg",
+    "sqlalchemy",
+    "redis",
+    "structlog",
+    "prometheus_client",
+    "horizon_analytics.observability",
+]
+
+[[tool.importlinter.contracts]]
+# Аналог правила «из компоновочного корня видны только настройки»: класс, дотянувшийся до сборщика
+# зависимостей, начинает собирать их сам вместо того, чтобы принимать, и подменить их в тесте
+# становится нечем. Для домена и прикладного слоя это означает конец подмены движка фикстурой.
+name = "Домен и приложение не знают про компоновочный корень"
+type = "forbidden"
+source_modules = ["horizon_analytics.domain", "horizon_analytics.application"]
+forbidden_modules = ["horizon_analytics.container", "horizon_analytics.api"]

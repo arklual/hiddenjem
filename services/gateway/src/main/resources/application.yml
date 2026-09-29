@@ -1,0 +1,160 @@
+server:
+  port: ${SERVER_PORT:8080}
+  shutdown: graceful
+  netty:
+    idle-timeout: 60s
+  forward-headers-strategy: framework
+
+spring:
+  application:
+    name: gateway
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+      lettuce:
+        pool:
+          max-active: 16
+          max-idle: 8
+  cloud:
+    gateway:
+      httpclient:
+        connect-timeout: 2000
+        response-timeout: 30s
+        pool:
+          max-connections: 200
+          acquire-timeout: 5000
+      default-filters:
+        - name: Retry
+          args:
+            retries: 2
+            # Only idempotent methods are retried; retrying a POST could duplicate an analysis.
+            methods: GET
+            series: SERVER_ERROR
+            backoff:
+              firstBackoff: 100ms
+              maxBackoff: 1s
+              factor: 2
+              basedOnPreviousValue: false
+      routes:
+        # ── Trend discovery (core) ─────────────────────────────────────────────────────────
+        # The SSE route is declared BEFORE the generic one and disables the response timeout:
+        # a progress stream is long-lived by design and must not be cut off after 30 s (ADR-0012).
+        - id: trends-progress-stream
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/research-requests/*/events
+          metadata:
+            response-timeout: 0
+            connect-timeout: 2000
+        - id: trends-research
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/research-requests/**
+        # Трассировка «почему этой темы нет» повторяет анализ целиком: 35–85 секунд. Под общим
+        # таймаутом в 30 с шлюз обрывал её и по фильтру Retry отправлял тот же GET ещё дважды —
+        # каждый повтор запускал в движке ещё один полный прогон, три разом выбивали его по памяти,
+        # и аналитик получал 502 через полторы минуты. Свой маршрут — раньше общего — с таймаутом
+        # длиннее, чем trends-service ждёт движок (HORIZON_ANALYTICS_TIMEOUT, 300 с; движок выполняет
+        # повторы по одному, и второй вопрос ждёт первый): отказ приходит от trends со смыслом, а не
+        # от шлюза по часам.
+        - id: trends-report-explain
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/reports/*/explain
+          metadata:
+            response-timeout: 320000
+            connect-timeout: 2000
+        - id: trends-reports
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/reports/**
+        - id: trends-saved-domains
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/saved-domains/**
+        - id: trends-topics
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/topics/**
+        # Реестр фич читает каждый клиент при загрузке. Маршрута у него не было: ответ 404 клиент
+        # трактует как «список неизвестен», а неизвестный флаг считает включённым — поэтому дыра не
+        # проявлялась ничем, кроме того, что выключить фичу было нельзя.
+        - id: trends-features
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/features
+        # Список распознаваемых направлений аналитик запрашивает раньше всего остального — перед
+        # пустым полем ввода. Маршрута у него не было с момента появления: сквозь шлюз он отвечал
+        # 404, подсказки не приходили, и аналитик снова оказывался перед догадкой, каждая неудачная
+        # попытка которой стоит полного прогона. Локально это не всплывало — фронтенд в разработке
+        # ходит мимо шлюза, — а гейт JVM на машине без глобального Maven молча пропускался.
+        - id: trends-directions
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/directions/**
+        # Очередь пополнения словаря направлений. Путь прежний, но служба другая: /api/v1/admin/**
+        # раньше целиком уходил в iam-service, и эта точка trends-service сквозь шлюз не отвечала.
+        - id: trends-lexicon-queue
+          uri: ${HORIZON_UPSTREAM_TRENDS_URL:http://localhost:8082}
+          predicates:
+            - Path=/api/v1/admin/unrecognized-directions
+
+        # ── Source ingestion ───────────────────────────────────────────────────────────────
+        - id: ingestion-sources
+          uri: ${HORIZON_UPSTREAM_INGESTION_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/sources/**
+        - id: ingestion-runs
+          uri: ${HORIZON_UPSTREAM_INGESTION_URL:http://localhost:8083}
+          predicates:
+            - Path=/api/v1/ingestion-runs/**
+
+horizon:
+  gateway:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000,http://localhost:5173}
+    requests-per-minute: ${RATE_LIMIT_PER_MINUTE:300}
+    burst-capacity: ${RATE_LIMIT_BURST:60}
+    rate-limit-enabled: ${RATE_LIMIT_ENABLED:true}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        # `gateway` is deliberately NOT exposed. That endpoint can create, replace and delete
+        # routes at runtime; reachable by any authenticated caller it turns an analyst account
+        # into estate-wide credential theft (add a route pointing at your own host and every
+        # Authorization header is proxied to you). Route changes belong in configuration.
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+    # Redis backs rate limiting only, and the limiter fails open (ADR-0011). Letting Redis gate
+    # readiness would escalate a graceful degradation into a full outage of the edge.
+    redis:
+      enabled: false
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLER_ARG:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+
+logging:
+  level:
+    root: INFO
+    dev.horizon: DEBUG
+    org.springframework.cloud.gateway: INFO

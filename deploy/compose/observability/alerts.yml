@@ -1,0 +1,494 @@
+# =============================================================================
+#  Horizon — правила Prometheus (NFR-O4)
+# =============================================================================
+#  Правило попадает сюда, только если на него есть runbook: алерт без сценария
+#  действий — это шум, который через месяц перестают читать.
+#  Runbook'и: docs/04-operations/02-slo-and-runbooks.md
+#
+#  Проверка синтаксиса без запуска стека:
+#      make lint      (внутри: promtool check rules)
+#
+# ─────────────────────────────────────────────────────────────────────────────
+#  КОНТРАКТ ПО МЕТРИКАМ
+# ─────────────────────────────────────────────────────────────────────────────
+#  Эти правила — не наблюдение за тем, что «случайно оказалось» в метриках,
+#  а требования к приложениям. Сервис обязан экспортировать:
+#
+#  Стандартные (Micrometer / Spring Boot Actuator, приходят сами):
+#    http_server_requests_seconds_{count,sum,bucket}{service,uri,method,status,outcome}
+#      ! гистограмма требует management.metrics.distribution.percentiles-histogram
+#        (включена переменной окружения в docker-compose.yml)
+#    hikaricp_connections_{active,idle,pending,max}{pool}
+#    jvm_memory_used_bytes, jvm_gc_pause_seconds_*
+#
+#  Доменные (реализует команда сервиса):
+#    horizon_kafka_consumer_lag_seconds{service,group,topic}   gauge, NFR-P5
+#    horizon_outbox_pending_messages{service}                  gauge, ADR-0003
+#    horizon_outbox_oldest_pending_age_seconds{service}        gauge
+#    horizon_dlq_messages_total{topic}                         counter, NFR-R4
+#    horizon_connector_requests_total{source,outcome}          counter, outcome=success|failure
+#    horizon_documents_ingested_total{source}                  counter
+#    horizon_analytics_stage_duration_seconds_bucket{stage}    histogram, analytics-service
+#    horizon_research_requests_total{result}                   counter, result=completed|failed|cancelled
+#    horizon_research_requests_partial_total                   counter, NFR-R5/NFR-O5
+#    horizon_trends_produced_total                             counter
+#    horizon_saga_timeouts_total                               counter
+#
+#  Отсутствие метрики НЕ включает алерт (в PromQL нет данных — нет срабатывания).
+#  Поэтому за наличие самих метрик отвечает отдельная проверка `HorizonMetricsMissing`.
+# =============================================================================
+
+groups:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Вспомогательные записи (recording rules)
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Считаем один раз здесь, а не в каждом алерте и каждой панели дашборда:
+  #  иначе определение SLI начинает жить в пяти местах и расходиться.
+  - name: horizon.recording.http
+    interval: 30s
+    rules:
+
+      - record: horizon:http_requests:rate5m
+        expr: sum by (service) (rate(http_server_requests_seconds_count[5m]))
+
+      - record: horizon:http_errors:rate5m
+        expr: sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[5m]))
+
+      # clamp_min защищает от деления на ноль на простаивающем сервисе:
+      # без него ratio становится NaN, и алерт молчит именно тогда,
+      # когда трафик уже упал до нуля.
+      - record: horizon:http_errors:ratio_rate5m
+        expr: |
+          horizon:http_errors:rate5m
+            / clamp_min(horizon:http_requests:rate5m, 0.001)
+
+      # SLI доступности = доля НЕ-5xx ответов. 4xx — это ошибки клиента,
+      # они не тратят наш бюджет ошибок.
+      - record: horizon:slo_availability:ratio_rate5m
+        expr: 1 - horizon:http_errors:ratio_rate5m
+
+      - record: horizon:slo_availability:ratio_rate1h
+        expr: |
+          1 - (
+            sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[1h]))
+              / clamp_min(sum by (service) (rate(http_server_requests_seconds_count[1h])), 0.001)
+          )
+
+      - record: horizon:slo_availability:ratio_rate6h
+        expr: |
+          1 - (
+            sum by (service) (rate(http_server_requests_seconds_count{status=~"5.."}[6h]))
+              / clamp_min(sum by (service) (rate(http_server_requests_seconds_count[6h])), 0.001)
+          )
+
+      # SLI задержки: доля запросов быстрее 300 мс (порог NFR-P1 для p95).
+      # Считаем именно ДОЛЮ, а не p95: доля складывается по окнам и годится
+      # для burn rate, квантиль — нет.
+      - record: horizon:slo_latency:good_ratio_rate5m
+        expr: |
+          sum by (service) (rate(http_server_requests_seconds_bucket{le="0.3"}[5m]))
+            / clamp_min(sum by (service) (rate(http_server_requests_seconds_count[5m])), 0.001)
+
+      - record: horizon:slo_latency:good_ratio_rate1h
+        expr: |
+          sum by (service) (rate(http_server_requests_seconds_bucket{le="0.3"}[1h]))
+            / clamp_min(sum by (service) (rate(http_server_requests_seconds_count[1h])), 0.001)
+
+      - record: horizon:slo_latency:good_ratio_rate6h
+        expr: |
+          sum by (service) (rate(http_server_requests_seconds_bucket{le="0.3"}[6h]))
+            / clamp_min(sum by (service) (rate(http_server_requests_seconds_count[6h])), 0.001)
+
+      - record: horizon:http_latency:p95_5m
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (service, le) (rate(http_server_requests_seconds_bucket[5m]))
+          )
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  1. Доступность сервисов
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: horizon.availability
+    interval: 30s
+    rules:
+
+      - alert: HorizonServiceDown
+        expr: up{job=~"horizon-.*"} == 0
+        for: 2m
+        labels:
+          severity: critical
+          category: availability
+        annotations:
+          summary: "Сервис {{ $labels.service }} недоступен для сбора метрик"
+          description: >-
+            Prometheus не может опросить {{ $labels.instance }} (job {{ $labels.job }})
+            уже 2 минуты. Это либо упавший процесс, либо потерянная сеть, либо
+            зависший actuator — все три случая одинаково означают, что о состоянии
+            сервиса мы ничего не знаем.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#сервис-недоступен"
+
+      # 2 минуты недоступности терпимы, 10 — это уже съеденный за сутки бюджет
+      # NFR-R1 (99.5% в месяц = 3.6 ч; 10 минут — 5% месячного бюджета).
+      - alert: HorizonServiceDownProlonged
+        expr: up{job=~"horizon-.*"} == 0
+        for: 10m
+        labels:
+          severity: page
+          category: availability
+        annotations:
+          summary: "Сервис {{ $labels.service }} недоступен более 10 минут"
+          description: "Съедено ~5% месячного бюджета ошибок NFR-R1 одним инцидентом."
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#сервис-недоступен"
+
+      # Контроль самого контракта по метрикам: если сервис жив, но доменных
+      # метрик нет, все остальные правила молча выключены.
+      - alert: HorizonMetricsMissing
+        expr: |
+          (up{job="horizon-java", service="trends-service"} == 1)
+          unless on (service) (horizon_outbox_pending_messages)
+        for: 15m
+        labels:
+          severity: warning
+          category: observability
+        annotations:
+          summary: "trends-service не экспортирует доменные метрики"
+          description: >-
+            Сервис отвечает на скрейп, но метрики horizon_outbox_pending_messages нет.
+            Значит правила по outbox не работают — авария по нему пройдёт незамеченной.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#метрики-пропали"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  2. Ошибки и задержки HTTP (SLO)
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: horizon.http
+    interval: 30s
+    rules:
+
+      - alert: HorizonHighErrorRate
+        expr: horizon:http_errors:ratio_rate5m > 0.02
+        for: 5m
+        labels:
+          severity: critical
+          category: errors
+        annotations:
+          summary: "Доля 5xx у {{ $labels.service }} превысила 2%"
+          description: >-
+            Текущее значение {{ $value | humanizePercentage }} за 5 минут.
+            Порог 2% — это четырёхкратное превышение бюджета ошибок NFR-R1 (0.5%).
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#рост-5xx"
+
+      # ── Burn rate по доступности (SLO 99.5%, бюджет 0.5%) ──
+      # Двухоконная схема: короткое окно отсекает ложные срабатывания на
+      # одиночном всплеске, длинное — подтверждает, что тренд настоящий.
+      # 14.4x означает: при таком темпе месячный бюджет кончится за ~2 суток.
+      - alert: HorizonAvailabilityBudgetBurnFast
+        expr: |
+          (1 - horizon:slo_availability:ratio_rate1h) > (14.4 * 0.005)
+          and
+          (1 - horizon:slo_availability:ratio_rate5m) > (14.4 * 0.005)
+        for: 2m
+        labels:
+          severity: page
+          category: slo
+          slo: availability
+        annotations:
+          summary: "Быстрое сгорание бюджета доступности: {{ $labels.service }}"
+          description: >-
+            Темп ошибок в 14.4 раза выше допустимого. При сохранении темпа
+            месячный бюджет ошибок (0.5%) будет исчерпан примерно за 2 суток.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#сгорание-бюджета-ошибок"
+
+      # 6x — «тлеющая» деградация: за неделю съест бюджет целиком.
+      - alert: HorizonAvailabilityBudgetBurnSlow
+        expr: |
+          (1 - horizon:slo_availability:ratio_rate6h) > (6 * 0.005)
+          and
+          (1 - horizon:slo_availability:ratio_rate1h) > (6 * 0.005)
+        for: 15m
+        labels:
+          severity: warning
+          category: slo
+          slo: availability
+        annotations:
+          summary: "Медленное сгорание бюджета доступности: {{ $labels.service }}"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#сгорание-бюджета-ошибок"
+
+      # ── Burn rate по задержке (SLO: 95% быстрее 300 мс, NFR-P1) ──
+      # Цель 95% => бюджет «медленных» 5%.
+      - alert: HorizonLatencyBudgetBurnFast
+        expr: |
+          (1 - horizon:slo_latency:good_ratio_rate1h) > (14.4 * 0.05)
+          and
+          (1 - horizon:slo_latency:good_ratio_rate5m) > (14.4 * 0.05)
+        for: 2m
+        labels:
+          severity: page
+          category: slo
+          slo: latency
+        annotations:
+          summary: "Быстрое сгорание бюджета задержки: {{ $labels.service }}"
+          description: >-
+            Доля запросов медленнее 300 мс резко выросла. p95 сейчас:
+            {{ with printf "horizon:http_latency:p95_5m{service='%s'}" $labels.service | query }}
+            {{ . | first | value | humanizeDuration }}{{ end }}.
+            Порог NFR-P1 — p95 <= 300 мс при 50 RPS.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#рост-задержек"
+
+      - alert: HorizonLatencyBudgetBurnSlow
+        expr: |
+          (1 - horizon:slo_latency:good_ratio_rate6h) > (6 * 0.05)
+          and
+          (1 - horizon:slo_latency:good_ratio_rate1h) > (6 * 0.05)
+        for: 15m
+        labels:
+          severity: warning
+          category: slo
+          slo: latency
+        annotations:
+          summary: "Медленное сгорание бюджета задержки: {{ $labels.service }}"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#рост-задержек"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  3. Событийный конвейер: лаг, outbox, DLQ
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: horizon.messaging
+    interval: 30s
+    rules:
+
+      # NFR-P5: лаг консьюмера <= 30 с при штатной нагрузке.
+      - alert: HorizonConsumerLagHigh
+        expr: max by (service, group, topic) (horizon_kafka_consumer_lag_seconds) > 30
+        for: 5m
+        labels:
+          severity: critical
+          category: messaging
+        annotations:
+          summary: "Лаг консьюмера {{ $labels.group }} по {{ $labels.topic }}: {{ $value | humanizeDuration }}"
+          description: >-
+            Порог NFR-P5 — 30 с. Пользователь видит это как «анализ завис на стадии»:
+            команда уже в топике, но её никто не забрал.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#лаг-консьюмера"
+
+      # Резервное правило на случай, если доменная метрика ещё не реализована:
+      # брокер отдаёт лаг в записях, и это лучше, чем ничего.
+      # Порог 5000 подобран под 200 док/с (NFR-P3): ~25 с работы.
+      - alert: HorizonConsumerLagRecordsHigh
+        expr: |
+          max by (group, topic) (kafka_consumergroup_lag) > 5000
+          unless on () (count(horizon_kafka_consumer_lag_seconds) > 0)
+        for: 10m
+        labels:
+          severity: warning
+          category: messaging
+        annotations:
+          summary: "Лаг {{ $labels.group }} по {{ $labels.topic }}: {{ $value }} записей"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#лаг-консьюмера"
+
+      # Глубина outbox сама по себе не проблема — проблема, когда она РАСТЁТ:
+      # значит публикатор отстаёт от записи, и события не доедут до саги.
+      # deriv() по 30-минутному окну устойчив к пилообразности пачек.
+      - alert: HorizonOutboxBacklogGrowing
+        expr: |
+          horizon_outbox_pending_messages > 500
+          and
+          deriv(horizon_outbox_pending_messages[30m]) > 0
+        for: 15m
+        labels:
+          severity: critical
+          category: messaging
+        annotations:
+          summary: "Outbox {{ $labels.service }} растёт: {{ $value }} неопубликованных"
+          description: >-
+            Публикатор не успевает или не может писать в брокер. События саги
+            не доставляются, запросы пользователей зависают в статусе.
+            Транзакции при этом проходят — данные не теряются (ADR-0003),
+            но конвейер стоит.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#очередь-outbox-растёт"
+
+      # Возраст самой старой записи — более честный индикатор, чем количество:
+      # 50 сообщений возрастом 20 минут хуже, чем 5000 возрастом 5 секунд.
+      - alert: HorizonOutboxStale
+        expr: horizon_outbox_oldest_pending_age_seconds > 300
+        for: 5m
+        labels:
+          severity: critical
+          category: messaging
+        annotations:
+          summary: "Самое старое сообщение outbox {{ $labels.service }} ждёт {{ $value | humanizeDuration }}"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#очередь-outbox-растёт"
+
+      # NFR-R4: попадание в DLQ — это всегда потерянная для пользователя работа.
+      # Ненулевой прирост за 10 минут = инцидент, а не «фон».
+      - alert: HorizonDlqNotEmpty
+        expr: sum by (topic) (increase(horizon_dlq_messages_total[10m])) > 0
+        for: 1m
+        labels:
+          severity: critical
+          category: messaging
+        annotations:
+          summary: "В DLQ {{ $labels.topic }} приехало {{ $value }} сообщений за 10 минут"
+          description: >-
+            Сообщение исчерпало попытки доставки и отправлено в
+            {{ $labels.topic }}. Контекст ошибки — в заголовках сообщения.
+            Молча это не рассосётся: повтор возможен только вручную.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#непустой-dlq"
+
+      - alert: HorizonSagaTimeoutsSpiking
+        expr: |
+          sum(rate(horizon_saga_timeouts_total[15m])) * 900 > 3
+        for: 10m
+        labels:
+          severity: critical
+          category: saga
+        annotations:
+          summary: "Саги начали падать по таймауту: {{ $value | printf \"%.0f\" }} за 15 минут"
+          description: >-
+            Планировщик переводит запросы в FAILED/SAGA_TIMEOUT. Причина почти
+            всегда ниже по конвейеру: встал ingestion, встал analytics-worker
+            или переполнен outbox.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#саги-падают-по-таймауту"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  4. Сбор данных
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: horizon.ingestion
+    interval: 30s
+    rules:
+
+      # Внешние источники нестабильны по своей природе, поэтому порог высокий
+      # (25%) и окно длинное: алертить на каждый 502 от arXiv бессмысленно.
+      - alert: HorizonConnectorFailureRateHigh
+        expr: |
+          sum by (source) (rate(horizon_connector_requests_total{outcome="failure"}[10m]))
+            / clamp_min(sum by (source) (rate(horizon_connector_requests_total[10m])), 0.001)
+          > 0.25
+        for: 10m
+        labels:
+          severity: warning
+          category: ingestion
+        annotations:
+          summary: "Коннектор {{ $labels.source }}: {{ $value | humanizePercentage }} запросов с ошибкой"
+          description: >-
+            Прогон не падает целиком (NFR-R5: результат помечается partial),
+            но полнота корпуса снижается, а значит снижается и качество трендов.
+            Проверьте лимиты источника, ключ API и circuit breaker.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#коннектор-отказывает"
+
+      - alert: HorizonConnectorFullyDown
+        expr: |
+          sum by (source) (rate(horizon_connector_requests_total{outcome="failure"}[15m]))
+            / clamp_min(sum by (source) (rate(horizon_connector_requests_total[15m])), 0.001)
+          > 0.95
+        for: 15m
+        labels:
+          severity: critical
+          category: ingestion
+        annotations:
+          summary: "Коннектор {{ $labels.source }} не работает совсем"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#коннектор-отказывает"
+
+      # Бизнес-метрика (NFR-O5): доля прогонов, помеченных partial.
+      # Устойчиво высокая доля означает, что пользователи систематически
+      # получают неполные отчёты, даже если технически всё «зелёное».
+      - alert: HorizonPartialRunRatioHigh
+        expr: |
+          sum(increase(horizon_research_requests_partial_total[1h]))
+            / clamp_min(sum(increase(horizon_research_requests_total[1h])), 1)
+          > 0.2
+        for: 30m
+        labels:
+          severity: warning
+          category: quality
+        annotations:
+          summary: "Каждый пятый анализ отдаётся неполным ({{ $value | humanizePercentage }})"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#коннектор-отказывает"
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  5. Ресурсы
+  # ═══════════════════════════════════════════════════════════════════════════
+  - name: horizon.resources
+    interval: 30s
+    rules:
+
+      # Ожидание соединения к БД — это уже деградация: запросы стоят в очереди
+      # к пулу и съедают бюджет задержки ещё до первого SQL.
+      - alert: HorizonDbConnectionPoolExhausted
+        expr: hikaricp_connections_pending > 0
+        for: 5m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "{{ $labels.service }}: {{ $value }} потоков ждут соединение с БД"
+          description: >-
+            Пул исчерпан. Типичные причины: незакрытые транзакции, долгий запрос
+            под блокировкой, или суммарный размер пулов превысил max_connections.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#исчерпание-соединений-с-бд"
+
+      - alert: HorizonDbConnectionPoolNearLimit
+        expr: |
+          hikaricp_connections_active / clamp_min(hikaricp_connections_max, 1) > 0.85
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "{{ $labels.service }}: пул соединений заполнен на {{ $value | humanizePercentage }}"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#исчерпание-соединений-с-бд"
+
+      # Куча у потолка + активная сборка мусора = сервис тратит время на GC,
+      # а не на работу. Ловим до OOM, а не после.
+      - alert: HorizonJvmHeapPressure
+        expr: |
+          sum by (service) (jvm_memory_used_bytes{area="heap"})
+            / clamp_min(sum by (service) (jvm_memory_max_bytes{area="heap"}), 1) > 0.9
+        for: 10m
+        labels:
+          severity: warning
+          category: resources
+        annotations:
+          summary: "{{ $labels.service }}: куча заполнена на {{ $value | humanizePercentage }}"
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#нехватка-памяти"
+
+      - alert: HorizonJvmGcThrashing
+        expr: |
+          sum by (service) (rate(jvm_gc_pause_seconds_sum[5m])) > 0.2
+        for: 10m
+        labels:
+          severity: critical
+          category: resources
+        annotations:
+          summary: "{{ $labels.service }} тратит на GC более 20% времени"
+          description: "Классический предвестник OOM. Проверьте лимит памяти и утечки."
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#нехватка-памяти"
+
+      # NFR-P2: «полный цикл анализа p95 ≤ 90 с при корпусе ≤ 1500 документов».
+      #
+      # Требование записано в НФТ и до сих пор ни за чем не следило: панель `Полный цикл, p95`
+      # существовала, а сработки на превышение не было — то есть цель была видна тому, кто смотрит,
+      # и невидима тому, кто не смотрит.
+      #
+      # Порог — само требование, 90 с, не подобранное число. Окно `for: 30m` держит сработку от
+      # одиночного первого запроса по новому снапшоту: он стоит около 100 с (подгонка пространства
+      # эмбеддингов), повторные по тому же корпусу — около 22 с, и p95 задерживается выше 90 с
+      # только там, где холодных запусков большинство.
+      - alert: HorizonAnalysisCycleSlow
+        expr: |
+          histogram_quantile(
+            0.95,
+            sum by (le) (rate(horizon_analytics_stage_duration_seconds_bucket{stage="total"}[1h]))
+          ) > 90
+        for: 30m
+        labels:
+          severity: warning
+          category: analytics
+        annotations:
+          summary: "Полный цикл анализа: p95 {{ $value | printf \"%.0f\" }} с при цели 90 с"
+          description: >-
+            Аналитик ждёт результат дольше обещанного НФТ-P2. Две известные причины
+            дают разные числа: корпус на пределе max_documents при холодном
+            снапшоте — около 100 с однократно, а вот устойчивое превышение
+            означает либо поток запросов по новым снапшотам, либо просевшую стадию.
+          runbook_url: "docs/04-operations/02-slo-and-runbooks.md#полный-цикл-анализа-медленнее-нфт"

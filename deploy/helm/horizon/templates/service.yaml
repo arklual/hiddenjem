@@ -1,0 +1,102 @@
+{{/*
+=============================================================================
+  Service — стабильный адрес для каждой рабочей нагрузки
+=============================================================================
+  Имена сервисов (`<release>-gateway`, `<release>-trends-service`, ...) совпадают
+  с именами в docker-compose.yml с точностью до префикса релиза. Это не
+  косметика: одинаковые имена означают, что переменные окружения с адресами
+  upstream устроены одинаково локально и в кластере.
+=============================================================================
+*/}}
+{{- $root := . -}}
+{{- range $name, $rawSvc := .Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+  {{- with $svc.service.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  type: {{ $svc.service.type }}
+  {{- /* Внутренний трафик Horizon не покидает узел без нужды: Local сохраняет
+         исходный клиентский IP (важно для rate limit по IP, NFR-S7), но
+         применим только к типам с внешним входом. */}}
+  {{- if eq $svc.service.type "LoadBalancer" }}
+  externalTrafficPolicy: Local
+  {{- end }}
+  selector:
+    {{- include "horizon.selectorLabels" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $svc.port }}
+      targetPort: http
+      protocol: TCP
+    {{- if and $svc.metrics.enabled $svc.metrics.port (ne (int $svc.metrics.port) (int $svc.port)) }}
+    - name: metrics
+      port: {{ $svc.metrics.port }}
+      targetPort: metrics
+      protocol: TCP
+    {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+=============================================================================
+  ServiceMonitor — сбор метрик оператором Prometheus (NFR-O2)
+=============================================================================
+  Создаётся только если в кластере есть prometheus-operator. Без CRD
+  ServiceMonitor `helm install` упал бы на неизвестном ресурсе, поэтому
+  включение вынесено в values.
+=============================================================================
+*/}}
+{{- if $root.Values.observability.prometheus.serviceMonitor.enabled }}
+{{- range $name, $rawSvc := $root.Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+{{- if $svc.metrics.enabled }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+    {{- with $root.Values.observability.prometheus.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels:
+      {{- include "horizon.selectorLabels" $ctx | nindent 6 }}
+  namespaceSelector:
+    matchNames:
+      - {{ $root.Release.Namespace }}
+  endpoints:
+    - port: {{ if and $svc.metrics.port (ne (int $svc.metrics.port) (int $svc.port)) }}metrics{{ else }}http{{ end }}
+      path: {{ $svc.metrics.path }}
+      interval: {{ $root.Values.observability.prometheus.serviceMonitor.interval }}
+      scrapeTimeout: {{ $root.Values.observability.prometheus.serviceMonitor.scrapeTimeout }}
+      scheme: http
+      {{- /* Метка `service` используется во ВСЕХ правилах alerts.yml и во всех
+             панелях дашбордов. Без этого relabel она бы называлась `pod`,
+             и ни одно правило не сработало бы. */}}
+      relabelings:
+        - sourceLabels: [__meta_kubernetes_service_label_app_kubernetes_io_name]
+          targetLabel: service
+        - sourceLabels: [__meta_kubernetes_pod_name]
+          targetLabel: instance
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,454 @@
+{
+  "description": "Отрицательный контроль для проверки методологии на датасете методологов.\nСоставлен независимо от датасета слабых сигналов: это общеизвестные технологии, отраслевые стандарты и термины с пройденным пиком видимости в тех же шести областях. Ни одна строка не взята из датасета и ни одна не подбиралась по результатам замера — список зафиксирован до первого прогона.",
+  "kinds": {
+    "MATURE": "Массовое внедрение, сформированный рынок, выраженные лидеры",
+    "STANDARD": "Отраслевой или международный стандарт",
+    "HYPE": "Высокая медийная видимость без соответствующей ранней стадии"
+  },
+  "items": [
+    {
+      "query": "cloud computing",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Сформированный рынок с выраженными лидерами и двадцатилетней историей"
+    },
+    {
+      "query": "Kubernetes",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Отраслевой стандарт де-факто для оркестрации контейнеров"
+    },
+    {
+      "query": "virtual machine",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Базовая технология виртуализации, массово внедрена"
+    },
+    {
+      "query": "object storage",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Массовый сервис всех облачных провайдеров"
+    },
+    {
+      "query": "data warehouse",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Сложившийся класс корпоративных систем"
+    },
+    {
+      "query": "MapReduce",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Технология прошлого цикла, вытеснена преемниками"
+    },
+    {
+      "query": "large language model",
+      "area": "Инфраструктура ИИ",
+      "kind": "HYPE",
+      "reason": "Массовое внедрение и предельная медийная видимость с 2023 года"
+    },
+    {
+      "query": "retrieval-augmented generation",
+      "area": "Инфраструктура ИИ",
+      "kind": "HYPE",
+      "reason": "Стандартный приём в продуктах, а не ранняя стадия"
+    },
+    {
+      "query": "vector database",
+      "area": "Инфраструктура ИИ",
+      "kind": "HYPE",
+      "reason": "Сформированный рынок с выраженными лидерами к 2024 году"
+    },
+    {
+      "query": "GPU cluster",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Базовая инфраструктура обучения моделей"
+    },
+    {
+      "query": "model serving",
+      "area": "Инфраструктура ИИ",
+      "kind": "MATURE",
+      "reason": "Стандартная часть ML-платформ"
+    },
+    {
+      "query": "convolutional neural network",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Классическая архитектура, массово применяется с 2015 года"
+    },
+    {
+      "query": "predictive maintenance",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Сложившийся класс промышленных решений"
+    },
+    {
+      "query": "computer vision",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Сформированная область с готовыми продуктами"
+    },
+    {
+      "query": "reinforcement learning",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Устоявшийся раздел машинного обучения"
+    },
+    {
+      "query": "recommender system",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Массово внедрено во всех крупных сервисах"
+    },
+    {
+      "query": "speech recognition",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Массовый рынок, выраженные лидеры"
+    },
+    {
+      "query": "optical character recognition",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "Технология в обиходе несколько десятилетий"
+    },
+    {
+      "query": "digital twin",
+      "area": "Индустриальный ИИ",
+      "kind": "HYPE",
+      "reason": "Термин с высокой медийной видимостью и размытым содержанием"
+    },
+    {
+      "query": "Industry 4.0",
+      "area": "Индустриальный ИИ",
+      "kind": "HYPE",
+      "reason": "Зонтичный маркетинговый термин, а не технология"
+    },
+    {
+      "query": "big data analytics",
+      "area": "Индустриальный ИИ",
+      "kind": "HYPE",
+      "reason": "Термин прошлого цикла хайпа"
+    },
+    {
+      "query": "supervisory control and data acquisition",
+      "area": "Индустриальный ИИ",
+      "kind": "MATURE",
+      "reason": "SCADA: отраслевая норма с 1990-х"
+    },
+    {
+      "query": "industrial robot",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "Сформированный рынок, выраженные лидеры, десятилетия внедрений"
+    },
+    {
+      "query": "automated guided vehicle",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "Массовое применение на складах"
+    },
+    {
+      "query": "simultaneous localization and mapping",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "SLAM: базовый метод робототехники"
+    },
+    {
+      "query": "Robot Operating System",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "ROS: отраслевой стандарт де-факто"
+    },
+    {
+      "query": "collaborative robot",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "Коботы: сложившийся сегмент с лидерами"
+    },
+    {
+      "query": "lidar",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "Массовый компонент с конкурентным рынком"
+    },
+    {
+      "query": "servo motor",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "Стандартный компонент привода"
+    },
+    {
+      "query": "humanoid robot",
+      "area": "Роботы",
+      "kind": "HYPE",
+      "reason": "Предельная медийная видимость при единичных внедрениях"
+    },
+    {
+      "query": "drone delivery",
+      "area": "Роботы",
+      "kind": "HYPE",
+      "reason": "Обсуждается более десяти лет, рынок так и не сформировался"
+    },
+    {
+      "query": "machine vision inspection",
+      "area": "Роботы",
+      "kind": "MATURE",
+      "reason": "Стандартная часть производственных линий"
+    },
+    {
+      "query": "mobile banking",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Массовое внедрение, рынок сформирован"
+    },
+    {
+      "query": "contactless payment",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Повсеместная технология оплаты"
+    },
+    {
+      "query": "credit scoring",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Отраслевая норма кредитного процесса"
+    },
+    {
+      "query": "peer-to-peer lending",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Сегмент прошёл полный цикл и консолидировался"
+    },
+    {
+      "query": "robo-advisor",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Сложившийся класс сервисов"
+    },
+    {
+      "query": "open banking",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Регуляторно закреплённая практика"
+    },
+    {
+      "query": "buy now pay later",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Сформированный рынок с выраженными лидерами"
+    },
+    {
+      "query": "central bank digital currency",
+      "area": "Финтех",
+      "kind": "HYPE",
+      "reason": "Годы обсуждений при считанных внедрениях"
+    },
+    {
+      "query": "non-fungible token",
+      "area": "Финтех",
+      "kind": "HYPE",
+      "reason": "Прошедший пик хайпа без устойчивого применения"
+    },
+    {
+      "query": "decentralized finance",
+      "area": "Финтех",
+      "kind": "HYPE",
+      "reason": "Высокая видимость при узком реальном использовании"
+    },
+    {
+      "query": "smart contract",
+      "area": "Финтех",
+      "kind": "MATURE",
+      "reason": "Базовый механизм публичных блокчейнов с 2015 года"
+    },
+    {
+      "query": "two-factor authentication",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Повсеместная практика"
+    },
+    {
+      "query": "intrusion detection system",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Класс продуктов с десятилетиями истории"
+    },
+    {
+      "query": "public key infrastructure",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Инфраструктурная норма"
+    },
+    {
+      "query": "penetration testing",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Сложившаяся услуга с рынком и сертификацией"
+    },
+    {
+      "query": "security information and event management",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "SIEM: сформированный рынок"
+    },
+    {
+      "query": "web application firewall",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Массово внедрённый класс решений"
+    },
+    {
+      "query": "zero trust architecture",
+      "area": "Защита ИИ",
+      "kind": "HYPE",
+      "reason": "Маркетинговый зонтик над известными практиками"
+    },
+    {
+      "query": "adversarial example",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Классическая тема исследований с 2014 года"
+    },
+    {
+      "query": "differential privacy",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Устоявшийся метод с внедрениями у крупных компаний"
+    },
+    {
+      "query": "homomorphic encryption",
+      "area": "Защита ИИ",
+      "kind": "MATURE",
+      "reason": "Давняя область с обширной литературой"
+    },
+    {
+      "query": "content delivery network",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "Инфраструктурная норма интернета"
+    },
+    {
+      "query": "embedded system",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "Базовая инженерная дисциплина"
+    },
+    {
+      "query": "5G network",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "Развёрнутая сеть массового пользования"
+    },
+    {
+      "query": "Bluetooth Low Energy",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "Массовый стандарт беспроводной связи"
+    },
+    {
+      "query": "radio-frequency identification",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "RFID: технология в обиходе десятилетия"
+    },
+    {
+      "query": "edge computing",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "Сформированный сегмент с продуктами всех крупных вендоров"
+    },
+    {
+      "query": "field-programmable gate array",
+      "area": "Edge",
+      "kind": "MATURE",
+      "reason": "FPGA: зрелый класс микросхем"
+    },
+    {
+      "query": "internet of things",
+      "area": "Edge",
+      "kind": "HYPE",
+      "reason": "Зонтичный термин с пройденным пиком видимости"
+    },
+    {
+      "query": "smart city",
+      "area": "Edge",
+      "kind": "HYPE",
+      "reason": "Программный лозунг, а не технология"
+    },
+    {
+      "query": "ISO 20022",
+      "area": "Финтех",
+      "kind": "STANDARD",
+      "reason": "Международный стандарт финансовых сообщений"
+    },
+    {
+      "query": "PCI DSS",
+      "area": "Финтех",
+      "kind": "STANDARD",
+      "reason": "Отраслевой стандарт защиты платёжных данных"
+    },
+    {
+      "query": "TLS 1.3",
+      "area": "Защита ИИ",
+      "kind": "STANDARD",
+      "reason": "Стандарт транспортного шифрования"
+    },
+    {
+      "query": "OAuth 2.0",
+      "area": "Защита ИИ",
+      "kind": "STANDARD",
+      "reason": "Стандарт делегированной авторизации"
+    },
+    {
+      "query": "OpenID Connect",
+      "area": "Защита ИИ",
+      "kind": "STANDARD",
+      "reason": "Стандарт аутентификации поверх OAuth"
+    },
+    {
+      "query": "MQTT",
+      "area": "Edge",
+      "kind": "STANDARD",
+      "reason": "Стандартный протокол обмена для устройств"
+    },
+    {
+      "query": "OPC UA",
+      "area": "Индустриальный ИИ",
+      "kind": "STANDARD",
+      "reason": "Стандарт промышленного обмена данными"
+    },
+    {
+      "query": "Modbus",
+      "area": "Индустриальный ИИ",
+      "kind": "STANDARD",
+      "reason": "Промышленный протокол с 1979 года"
+    },
+    {
+      "query": "ISO 26262",
+      "area": "Роботы",
+      "kind": "STANDARD",
+      "reason": "Стандарт функциональной безопасности"
+    },
+    {
+      "query": "IEEE 802.11",
+      "area": "Edge",
+      "kind": "STANDARD",
+      "reason": "Семейство стандартов беспроводных сетей"
+    },
+    {
+      "query": "NIST Cybersecurity Framework",
+      "area": "Защита ИИ",
+      "kind": "STANDARD",
+      "reason": "Рамка управления кибербезопасностью"
+    },
+    {
+      "query": "ONVIF",
+      "area": "Роботы",
+      "kind": "STANDARD",
+      "reason": "Стандарт взаимодействия видеоустройств"
+    }
+  ]
+}

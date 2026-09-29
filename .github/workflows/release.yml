@@ -1,0 +1,296 @@
+name: release
+
+# Выпуск версии: сборка образов, SBOM, подпись, публикация и раскатка.
+#
+# Триггер — только тег вида v1.2.3. Ручной запуск оставлен для повторной раскатки уже
+# выпущенной версии (например, после восстановления кластера), но не для сборки новой:
+# артефакт всегда однозначно соответствует тегу.
+
+on:
+  push:
+    tags: ['v*.*.*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Версия для повторной раскатки (например v1.2.3)'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # релиз не отменяем на полпути
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository }}
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  verify:
+    name: Проверки перед выпуском
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Тег соответствует семантическому версионированию
+        run: |
+          version="${{ github.event.inputs.version || github.ref_name }}"
+          if [[ ! "$version" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]]; then
+            echo "::error::Некорректная версия: $version"
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+        id: version
+
+      - name: Целостность golden-корпуса
+        # Релиз с разъехавшимся корпусом означает невоспроизводимые результаты
+        # у пользователя — это блокирующая проверка, а не предупреждение.
+        #
+        # `--strict`: пропуск проверки здесь равнозначен провалу. Без него гейт, не нашедший
+        # PyYAML, напечатал бы «пройдено» и выпустил релиз, не проверив корпус вовсе.
+        run: ./tools/verify.sh contracts --strict
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  images:
+    name: Образ ${{ matrix.service }}
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write        # keyless-подпись cosign через OIDC
+      attestations: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - service: gateway
+            context: .
+            dockerfile: services/gateway/Dockerfile
+          - service: trends-service
+            context: .
+            dockerfile: services/trends-service/Dockerfile
+          - service: ingestion-service
+            context: .
+            dockerfile: services/ingestion-service/Dockerfile
+          - service: analytics-service
+            context: services/analytics-service
+            dockerfile: services/analytics-service/Dockerfile
+          - service: frontend
+            context: frontend
+            dockerfile: frontend/Dockerfile
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Вход в GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Метаданные образа
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=semver,pattern={{version}},value=${{ needs.verify.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=${{ needs.verify.outputs.version }}
+            type=sha,format=long
+          labels: |
+            org.opencontainers.image.title=horizon-${{ matrix.service }}
+            org.opencontainers.image.description=Horizon — обнаружение зарождающихся технологических трендов
+            org.opencontainers.image.licenses=Proprietary
+
+      - name: Сборка и публикация
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          file: ${{ matrix.dockerfile }}
+          platforms: linux/amd64,linux/arm64
+          push: true
+          provenance: mode=max
+          sbom: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+
+      - name: SBOM (Syft)
+        uses: anchore/sbom-action@v0
+        with:
+          image: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output-file: sbom-${{ matrix.service }}.spdx.json
+
+      - name: Сканирование образа
+        uses: aquasecurity/trivy-action@0.28.0
+        with:
+          image-ref: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}
+          severity: HIGH,CRITICAL
+          exit-code: '1'
+          ignore-unfixed: true
+
+      - name: Подпись образа (cosign, keyless)
+        # Требует permissions.id-token: write выше. Проверка на стороне кластера:
+        #   cosign verify --certificate-identity-regexp '^https://github.com/<org>/<repo>/' \
+        #                 --certificate-oidc-issuer https://token.actions.githubusercontent.com <image>
+        uses: sigstore/cosign-installer@v3
+      - run: |
+          cosign sign --yes \
+            "${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}@${{ steps.build.outputs.digest }}"
+
+      - name: Аттестация сборки
+        uses: actions/attest-build-provenance@v1
+        with:
+          subject-name: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          push-to-registry: true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.service }}
+          path: sbom-${{ matrix.service }}.spdx.json
+          retention-days: 90
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  github-release:
+    name: GitHub Release
+    needs: [verify, images]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/download-artifact@v4
+        with:
+          pattern: sbom-*
+          path: sboms
+          merge-multiple: true
+
+      - name: Заметки о выпуске
+        id: notes
+        run: |
+          previous=$(git describe --tags --abbrev=0 "${{ needs.verify.outputs.version }}^" 2>/dev/null || echo "")
+          {
+            echo 'notes<<EOF'
+            if [ -n "$previous" ]; then
+              echo "## Изменения с $previous"
+              git log --no-merges --pretty='* %s (%h)' "$previous..${{ needs.verify.outputs.version }}"
+            else
+              echo "## Первый выпуск"
+            fi
+            echo ""
+            echo "## Образы"
+            for s in gateway trends-service ingestion-service analytics-service frontend; do
+              echo "* \`${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/$s:${{ needs.verify.outputs.version }}\`"
+            done
+            echo ""
+            echo "SBOM для каждого образа приложен к выпуску."
+            echo 'EOF'
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.verify.outputs.version }}
+          body: ${{ steps.notes.outputs.notes }}
+          files: sboms/*.spdx.json
+          draft: false
+          prerelease: ${{ contains(needs.verify.outputs.version, '-') }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-staging:
+    name: Раскатка в staging
+    needs: [verify, images]
+    runs-on: ubuntu-latest
+    environment:
+      name: staging
+      url: https://horizon.staging.example.bank
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Настроить доступ к кластеру
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_STAGING }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: helm upgrade --install
+        run: |
+          helm upgrade --install horizon deploy/helm/horizon \
+            --namespace horizon --create-namespace \
+            --values deploy/helm/horizon/values-dev.yaml \
+            --set global.image.registry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+            --set global.image.tag=${{ needs.verify.outputs.version }} \
+            --atomic --timeout 10m --wait
+
+      - name: Дымовая проверка после раскатки
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS https://horizon.staging.example.bank/actuator/health/readiness >/dev/null; then
+              echo "staging готов"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::staging не отвечает после раскатки"; exit 1
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  deploy-production:
+    name: Раскатка в production
+    needs: [verify, images, deploy-staging]
+    runs-on: ubuntu-latest
+    # Ручное подтверждение настраивается на самом environment (required reviewers).
+    environment:
+      name: production
+      url: https://horizon.example.bank
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.2
+
+      - name: Настроить доступ к кластеру
+        run: |
+          mkdir -p ~/.kube
+          echo "${{ secrets.KUBECONFIG_PRODUCTION }}" | base64 -d > ~/.kube/config
+          chmod 600 ~/.kube/config
+
+      - name: helm upgrade --install
+        # --atomic откатывает релиз при неуспешной раскатке: частично обновлённый
+        # кластер хуже, чем предыдущая рабочая версия.
+        run: |
+          helm upgrade --install horizon deploy/helm/horizon \
+            --namespace horizon --create-namespace \
+            --values deploy/helm/horizon/values-prod.yaml \
+            --set global.image.registry=${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }} \
+            --set global.image.tag=${{ needs.verify.outputs.version }} \
+            --atomic --timeout 15m --wait
+
+      - name: Дымовая проверка после раскатки
+        run: |
+          for i in $(seq 1 30); do
+            if curl -fsS https://horizon.example.bank/actuator/health/readiness >/dev/null; then
+              echo "production готов"; exit 0
+            fi
+            sleep 10
+          done
+          echo "::error::production не отвечает после раскатки"; exit 1

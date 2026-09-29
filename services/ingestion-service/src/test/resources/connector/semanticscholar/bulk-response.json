@@ -1,0 +1,149 @@
+{
+ "total": 831,
+ "token": null,
+ "data": [
+  {
+   "paperId": "003a46a1516891b8a0e01e593c596bcafb3b953b",
+   "externalIds": {
+    "DBLP": "journals/corr/abs-2506-06607",
+    "ArXiv": "2506.06607",
+    "DOI": "10.48550/arXiv.2506.06607",
+    "CorpusId": 279250401
+   },
+   "url": "https://www.semanticscholar.org/paper/003a46a1516891b8a0e01e593c596bcafb3b953b",
+   "title": "Training-Free Tokenizer Transplantation via Orthogonal Matching Pursuit",
+   "venue": "arXiv.org",
+   "year": 2025,
+   "citationCount": 4,
+   "openAccessPdf": {
+    "url": "",
+    "status": null,
+    "license": null,
+    "disclaimer": "Notice: Paper or abstract available at https://arxiv.org/abs/2506.06607, which is subject to the license by the author or copyright owner provided with this content. Please go to the source to verify the license and copyright information for your use."
+   },
+   "fieldsOfStudy": [
+    "Computer Science"
+   ],
+   "publicationTypes": [
+    "JournalArticle"
+   ],
+   "publicationDate": "2025-06-07",
+   "authors": [
+    {
+     "authorId": "2292260669",
+     "name": "Charles Goddard"
+    },
+    {
+     "authorId": "2226169804",
+     "name": "Fernando Fernandes"
+    }
+   ],
+   "abstract": "We present a training-free method to transplant tokenizers in pretrained large language models (LLMs) by reconstructing unseen token embeddings via Orthogonal Matching Pursuit (OMP). Specifically, we approximate each out-of-vocabulary token as a sparse linear combination of shared tokens, in two phases: first, compute each new token's representation in the donor embedding space with a small dictionary of shared anchor tokens, then transfer these same sparse coefficients back into the base model's embedding space. On two challenging cross-tokenizer tasks--Llama$\\to$Mistral NeMo (12B) and Qwen$\\to$Llama (1B)--we show that OMP achieves best zero-shot preservation of the base model's performance across multiple benchmarks, while other zero-shot approaches degrade significantly. Compared to baselines (zero-init, mean-init, and existing approaches like WECHSEL, FOCUS, ZETT), OMP consistently achieves the best overall performance, effectively bridging large tokenizer discrepancies without gradient updates. Our analysis further identifies mismatched numerical tokenization schemes as a critical challenge for preserving mathematical reasoning capabilities. This technique enables direct reuse of pretrained model weights with new tokenizers, facilitating cross-tokenizer knowledge distillation, speculative decoding, ensembling, merging, and domain-specific vocabulary adaptations. We integrate our method into the open-source mergekit-tokensurgeon tool for post hoc vocabulary realignment."
+  },
+  {
+   "paperId": "0043482a3dd72b5191f53e4c201526a0ed9711e1",
+   "externalIds": {
+    "ArXiv": "2604.19767",
+    "DBLP": "journals/corr/abs-2604-19767",
+    "DOI": "10.1109/BigDataService70481.2026.00022",
+    "CorpusId": 287668833
+   },
+   "url": "https://www.semanticscholar.org/paper/0043482a3dd72b5191f53e4c201526a0ed9711e1",
+   "title": "Accelerating Paypal's Commerce Agent with Speculative Decoding: An Empirical Study on EAGLE3 with Fine-Tuned Nemotron Models",
+   "venue": "International Conference on Big Data Computing Service and Applications",
+   "year": 2026,
+   "citationCount": 0,
+   "openAccessPdf": {
+    "url": "https://doi.org/10.48550/arxiv.2604.19767",
+    "status": "GREEN",
+    "license": "CCBY",
+    "disclaimer": "Notice: Paper or abstract available at https://arxiv.org/abs/2604.19767, which is subject to the license by the author or copyright owner provided with this content. Please go to the source to verify the license and copyright information for your use."
+   },
+   "fieldsOfStudy": [
+    "Computer Science"
+   ],
+   "publicationTypes": [
+    "JournalArticle",
+    "Conference"
+   ],
+   "publicationDate": "2026-03-27",
+   "authors": [
+    {
+     "authorId": "2425318325",
+     "name": "Ally Qin"
+    },
+    {
+     "authorId": "2328399371",
+     "name": "Jian Wan"
+    },
+    {
+     "authorId": "2425318059",
+     "name": "Sarat Mudunuri"
+    },
+    {
+     "authorId": "2401264168",
+     "name": "Srinivasan Manoharan"
+    }
+   ],
+   "abstract": "We present a comprehensive empirical evaluation of speculative decoding applied to PayPal's Commerce Agent which is powered by NEMO-4-PAYPAL, a multi-agent system designed to revolutionize agentic commerce on the PayPal platform, extending the prior work on fine-tuning Nemotron small language models (SLMs) for e-commerce search and recommendation tasks. In this work, we investigate speculative decoding with EAGLE3 as an inference-time optimization for the fine-tuned llama3.1-nemotron-nano-8B-v1 model deployed via vLLM, comparing it against NVIDIA NIM which set vLLM as the model profile on identical $2 \\times$ H100 GPU hardware. Our extensive benchmarks span two speculative token configurations $(\\gamma=3, \\gamma=5)$, five concurrency levels (1, 4, 8, 16, 32), and two sampling temperatures (0, 0.5), totaling 40 distinct experimental configurations. Key findings include: (1) speculative decoding with $\\gamma=3$ achieves 22-49% throughput improvement and 18-33% latency reduction over the NIM baseline at zero additional hardware cost; (2) the acceptance rate remains remarkably stable at ∼35.5% for $\\gamma=3$ across all concurrency levels and temperatures; (3) $\\gamma=5$ yields diminishing returns due to lower acceptance rates (∼25%); (4) LLM-as-Judge evaluation with pairwise comparison confirms output quality is fully preserved; and (5) speculative decoding on a single H100 matches or exceeds NIM performance on two H100s across concurrency levels 1-8, representing a potential 50% GPU cost reduction."
+  },
+  {
+   "paperId": "00493d94a9f5571875475bef1d44e304991b7cdc",
+   "externalIds": {
+    "ArXiv": "2505.22179",
+    "DBLP": "journals/corr/abs-2505-22179",
+    "DOI": "10.48550/arXiv.2505.22179",
+    "CorpusId": 278959205
+   },
+   "url": "https://www.semanticscholar.org/paper/00493d94a9f5571875475bef1d44e304991b7cdc",
+   "title": "Speculative Decoding Meets Quantization: Compatibility Evaluation and Hierarchical Framework Design",
+   "venue": "arXiv.org",
+   "year": 2025,
+   "citationCount": 3,
+   "openAccessPdf": {
+    "url": "",
+    "status": null,
+    "license": null,
+    "disclaimer": "Notice: Paper or abstract available at https://arxiv.org/abs/2505.22179, which is subject to the license by the author or copyright owner provided with this content. Please go to the source to verify the license and copyright information for your use."
+   },
+   "fieldsOfStudy": [
+    "Computer Science"
+   ],
+   "publicationTypes": [
+    "JournalArticle"
+   ],
+   "publicationDate": "2025-05-28",
+   "authors": [
+    {
+     "authorId": "2321663419",
+     "name": "Yudi Zhang"
+    },
+    {
+     "authorId": "2150606888",
+     "name": "Weilin Zhao"
+    },
+    {
+     "authorId": "2365468719",
+     "name": "Xu Han"
+    },
+    {
+     "authorId": "2286605964",
+     "name": "Tiejun Zhao"
+    },
+    {
+     "authorId": "2308347042",
+     "name": "Wang Xu"
+    },
+    {
+     "authorId": "3106089",
+     "name": "Hailong Cao"
+    },
+    {
+     "authorId": "2675365",
+     "name": "Conghui Zhu"
+    }
+   ],
+   "abstract": "Speculative decoding and quantization effectively accelerate memory-bound inference of large language models. Speculative decoding mitigates the memory bandwidth bottleneck by verifying multiple tokens within a single forward pass, which increases computational effort. Quantization achieves this optimization by compressing weights and activations into lower bit-widths and also reduces computations via low-bit matrix multiplications. To further leverage their strengths, we investigate the integration of these two techniques. Surprisingly, experiments applying the advanced speculative decoding method EAGLE-2 to various quantized models reveal that the memory benefits from 4-bit weight quantization are diminished by the computational load from speculative decoding. Specifically, verifying a tree-style draft incurs significantly more time overhead than a single-token forward pass on 4-bit weight quantized models. This finding led to our new speculative decoding design: a hierarchical framework that employs a small model as an intermediate stage to turn tree-style drafts into sequence drafts, leveraging the memory access benefits of the target quantized model. Experimental results show that our hierarchical approach achieves a 2.78$\\times$ speedup across various tasks for the 4-bit weight Llama-3-70B model on an A100 GPU, outperforming EAGLE-2 by 1.31$\\times$. Code available at https://github.com/AI9Stars/SpecMQuant."
+  }
+ ]
+}

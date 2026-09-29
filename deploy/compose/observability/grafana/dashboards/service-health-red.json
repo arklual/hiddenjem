@@ -1,0 +1,585 @@
+{
+  "uid": "horizon-service-health",
+  "title": "Horizon / Service Health (RED)",
+  "description": "Rate / Errors / Duration по всем сервисам Horizon. Отвечает на один вопрос: работает ли система прямо сейчас и укладываемся ли мы в NFR-P1 и NFR-R1. Источник метрик: /actuator/prometheus (Java) и /metrics (Python).",
+  "tags": ["horizon", "red", "slo"],
+  "timezone": "utc",
+  "editable": false,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-6h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "1h"] },
+  "templating": {
+    "list": [
+      {
+        "name": "service",
+        "label": "Сервис",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(http_server_requests_seconds_count, service)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "annotations": {
+    "list": [
+      {
+        "name": "Деплой",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "enable": true,
+        "iconColor": "rgba(255, 96, 96, 1)",
+        "expr": "changes(process_start_time_seconds{job=~\"horizon-.*\"}[2m]) > 0",
+        "titleFormat": "Рестарт {{service}}",
+        "step": "60s"
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 100,
+      "title": "Сводка",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Доступность (1 ч)",
+      "description": "Доля не-5xx ответов. Цель NFR-R1 — 99.5% за месяц; красная зона ниже 99.5%.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "avg(horizon:slo_availability:ratio_rate1h{service=~\"$service\"})",
+          "legendFormat": "availability"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area",
+        "textMode": "auto"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "min": 0.98,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.995 },
+              { "color": "green", "value": 0.999 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Запросов в секунду",
+      "description": "Суммарный RPS. NFR-P1 задан для 50 RPS — ориентир для интерпретации задержек.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(horizon:http_requests:rate5m{service=~\"$service\"})",
+          "legendFormat": "rps"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "decimals": 1,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Доля ошибок 5xx",
+      "description": "Порог алерта HorizonHighErrorRate — 2%.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(horizon:http_errors:rate5m{service=~\"$service\"}) / clamp_min(sum(horizon:http_requests:rate5m{service=~\"$service\"}), 0.001)",
+          "legendFormat": "errors"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 2,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.005 },
+              { "color": "red", "value": 0.02 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "p95 задержки",
+      "description": "NFR-P1: p95 <= 300 мс, p99 <= 800 мс при 50 RPS.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max(horizon:http_latency:p95_5m{service=~\"$service\"})",
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 3,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.3 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Сервисы вне сети",
+      "description": "Значение больше нуля означает, что Prometheus не может опросить сервис (алерт HorizonServiceDown).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "count(up{job=~\"horizon-.*\"} == 0) or vector(0)",
+          "legendFormat": "down"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Остаток бюджета ошибок (30 д)",
+      "description": "1 - (доля ошибок за 30 дней) / 0.005. Ноль означает, что бюджет NFR-R1 исчерпан и релизы замораживаются (см. политику бюджета ошибок).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "clamp_min(1 - ((sum(increase(http_server_requests_seconds_count{status=~\"5..\"}[30d])) / clamp_min(sum(increase(http_server_requests_seconds_count[30d])), 1)) / 0.005), 0)",
+          "legendFormat": "budget"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "min": 0,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "red", "value": null },
+              { "color": "orange", "value": 0.25 },
+              { "color": "green", "value": 0.5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 101,
+      "title": "R — Rate",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Запросов в секунду по сервисам",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "horizon:http_requests:rate5m{service=~\"$service\"}",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Запросы по кодам ответа",
+      "description": "Разделение 2xx/3xx/4xx/5xx. Рост 4xx без роста 5xx — это обычно поломка контракта на клиенте, а не отказ сервиса.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (status) (rate(http_server_requests_seconds_count{service=~\"$service\"}[5m]))",
+          "legendFormat": "{{status}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "reqps",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 25, "stacking": { "mode": "normal" }, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "row",
+      "id": 102,
+      "title": "E — Errors",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 15 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Доля 5xx по сервисам",
+      "description": "Красная линия на 2% — порог алерта HorizonHighErrorRate.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "horizon:http_errors:ratio_rate5m{service=~\"$service\"}",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 3,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.02 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Скорость сгорания бюджета ошибок",
+      "description": "Во сколько раз текущий темп ошибок превышает допустимый. 1 = бюджет расходуется ровно по плану; 14.4 = закончится за двое суток (алерт HorizonAvailabilityBudgetBurnFast).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 16 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "(1 - horizon:slo_availability:ratio_rate1h{service=~\"$service\"}) / 0.005",
+          "legendFormat": "{{service}} (1ч)"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 6 },
+              { "color": "red", "value": 14.4 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "row",
+      "id": 103,
+      "title": "D — Duration",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 24 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Квантили задержки (все сервисы)",
+      "description": "Пороги NFR-P1: p95 = 300 мс, p99 = 800 мс.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 25 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.50, sum by (le) (rate(http_server_requests_seconds_bucket{service=~\"$service\"}[5m])))",
+          "legendFormat": "p50"
+        },
+        {
+          "refId": "B",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(http_server_requests_seconds_bucket{service=~\"$service\"}[5m])))",
+          "legendFormat": "p95"
+        },
+        {
+          "refId": "C",
+          "expr": "histogram_quantile(0.99, sum by (le) (rate(http_server_requests_seconds_bucket{service=~\"$service\"}[5m])))",
+          "legendFormat": "p99"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "dashed" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.3 },
+              { "color": "red", "value": 0.8 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 31,
+      "type": "table",
+      "title": "Самые медленные эндпоинты (p95)",
+      "description": "Куда смотреть в первую очередь при росте задержки. uri — шаблон маршрута, а не конкретный путь.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 25 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "format": "table",
+          "expr": "topk(10, histogram_quantile(0.95, sum by (service, uri, le) (rate(http_server_requests_seconds_bucket{service=~\"$service\"}[15m]))))"
+        }
+      ],
+      "transformations": [
+        { "id": "organize", "options": { "excludeByName": { "Time": true }, "renameByName": { "Value": "p95, c" } } }
+      ],
+      "fieldConfig": {
+        "defaults": { "unit": "s", "decimals": 3, "custom": { "align": "left" } },
+        "overrides": []
+      },
+      "options": { "showHeader": true, "sortBy": [{ "displayName": "p95, c", "desc": true }] }
+    },
+    {
+      "type": "row",
+      "id": 104,
+      "title": "U — Utilization (ресурсы)",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 33 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 40,
+      "type": "timeseries",
+      "title": "Куча JVM",
+      "description": "Заполнение более 90% в течение 10 минут поднимает HorizonJvmHeapPressure.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (jvm_memory_used_bytes{area=\"heap\", service=~\"$service\"}) / clamp_min(sum by (service) (jvm_memory_max_bytes{area=\"heap\", service=~\"$service\"}), 1)",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 41,
+      "type": "timeseries",
+      "title": "Пул соединений с БД",
+      "description": "pending > 0 означает, что потоки стоят в очереди за соединением (HorizonDbConnectionPoolExhausted).",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "hikaricp_connections_active{service=~\"$service\"}",
+          "legendFormat": "{{service}} active"
+        },
+        {
+          "refId": "B",
+          "expr": "hikaricp_connections_pending{service=~\"$service\"}",
+          "legendFormat": "{{service}} pending"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 0, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 42,
+      "type": "timeseries",
+      "title": "Пауза сборки мусора",
+      "description": "Доля времени, проведённого в GC. Больше 20% — сервис занят собой, а не запросами.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (service) (rate(jvm_gc_pause_seconds_sum{service=~\"$service\"}[5m]))",
+          "legendFormat": "{{service}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 0.2 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    }
+  ]
+}

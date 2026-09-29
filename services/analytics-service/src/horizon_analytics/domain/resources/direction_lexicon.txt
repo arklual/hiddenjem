@@ -1,0 +1,288 @@
+# Перекрёстный словарь направлений: формулировка аналитика → предметные метки корпуса.
+#
+# Зачем он существует
+# ───────────────────
+# Отнесение темы к направлению держится на предметных кодах источников (методология §12): arXiv
+# ставит категории, OpenAlex — концепты, патентные ведомства — классы CPC, GitHub — темы
+# репозитория. Все они на английском. Аналитик набирает направление по-русски. Стем «интеллект» не
+# совпадает со стемом «intelligence» ни при каком алгоритме стемминга, поэтому без этого файла ни
+# один документ не относится к направлению — и отчёт перестаёт зависеть от того, что спросили: три
+# разных русских направления дают один и тот же список тем.
+#
+# Почему словарь, а не перевод
+# ────────────────────────────
+# Машинный перевод недетерминирован и внешний, а ADR-0015 требует воспроизводимости: один и тот же
+# запрос обязан давать один и тот же отчёт. Курируемый словарь — обычная практика tech mining
+# (crosswalk к контролируемому словарю), он проверяем, правится вручную и виден в ревью.
+#
+# Формат
+# ──────
+#   формулировка аналитика = целевая метка | другая целевая метка
+#
+# Слева — как пишет аналитик; справа — метка предметного словаря корпуса. Обе стороны стеммируются
+# тем же алгоритмом, что и остальной конвейер, поэтому падежи и число значения не имеют:
+# «квантовых вычислений» и «квантовые вычисления» дают один ключ.
+#
+# ВАЖНО: правая часть сопоставляется с меткой документа как непрерывная фраза по границам слов.
+# Не по отдельным словам — и не обязательно с меткой целиком. Разница существенна в обе стороны:
+#
+#   • не по словам: пока сопоставление шло по словам, «материаловедение» через слово `science`
+#     забирало 355 документов из 1244 — всё, что размечено `Computer science`, — а «компьютерное
+#     зрение» через `computer` забирало 216 документов и ни одного по компьютерному зрению;
+#   • не целиком: цель `cryptography` обязана забирать `Quantum cryptography` и `Public-key
+#     cryptography` — это криптография, названная точнее.
+#
+# Отсюда ловушка, на которой мы уже попались. Однословная цель — это фраза из одного слова, и она
+# совпадает с любой меткой, где это слово стоит. Цель `security` забирала `Food security`,
+# `Energy security`, `National security` и `Security analysis` (в OpenAlex это финансовый анализ
+# ценных бумаг) — 32 документа корпуса, не имеющих отношения к защите информации.
+#
+# Отличить `Quantum cryptography` (уточнение) от `Food security` (омоним) по строению фразы
+# нельзя: обе — «слово + наша цель». Различает только смысл, а смысл живёт здесь, в словаре.
+# Поэтому правило такое: однословную цель писать можно, только если само слово называет предмет
+# независимо от того, что стоит рядом. `cryptography` — называет. `security`, `science`,
+# `computer`, `engineering`, `systems`, `analysis` — не называют: их предмет задаёт определение
+# слева от них. Для таких пишите метку целиком, столько строк, сколько нужно.
+#
+# Правило пополнения: справа пишется то, что ДЕЙСТВИТЕЛЬНО встречается в метках источников —
+# включая коды (`cs.LG`, `quant-ph`, `q-bio.GN`, `cond-mat.mtrl-sci`). Коды покрывают препринты, а
+# препринт — самый ранний сигнал, ради которого продукт существует: без кодов четыре пятых корпуса
+# arXiv не относится ни к какому направлению. Метка, которой в корпусе нет, ничего не сломает, но и
+# не поможет.
+
+# ─────────────────────────── Искусственный интеллект ───────────────────────────
+искусственный интеллект = artificial intelligence | machine learning | deep learning | natural language processing | nlp | computer vision | ai | cs.AI | cs.LG | cs.CL | cs.CV | stat.ML
+ии = artificial intelligence | machine learning | deep learning | natural language processing | nlp | ai | cs.AI | cs.LG | cs.CL
+машинное обучение = machine learning | deep learning | artificial intelligence | cs.LG | stat.ML | pytorch
+глубокое обучение = deep learning | neural network architectures | backpropagation | cs.LG
+нейронные сети = neural network architectures | deep learning | backpropagation | cs.LG
+нейросети = neural network architectures | deep learning | backpropagation | cs.LG
+обработка естественного языка = natural language processing | natural language analysis | nlp | cs.CL
+языковые модели = natural language processing | nlp | cs.CL | large language model
+большие языковые модели = natural language processing | nlp | cs.CL | large language model
+компьютерное зрение = computer vision | cs.CV | pattern recognition
+машинное зрение = computer vision | cs.CV
+генеративные модели = machine learning | cs.LG | generative model
+
+# ─────────────────────────────── Квантовые технологии ───────────────────────────────
+квантовые вычисления = quantum computing | quantum information | quantum hardware | quant-ph
+квантовый компьютер = quantum computing | quantum hardware | quantum information | quant-ph
+квантовые технологии = quantum computing | quantum information | quantum mechanics | quant-ph
+квантовая информация = quantum information | quantum computing | quant-ph
+кубиты = quantum hardware | quantum information | quantum computing | cond-mat.mes-hall
+квантовая коррекция ошибок = quantum error correction | quantum information
+квантовая криптография = quantum cryptography | quantum key distribution | quantum information
+квантовое распределение ключей = quantum key distribution | quantum cryptography
+постквантовая криптография = cryptography | cryptographic mechanisms | quantum cryptography | cs.CR
+
+# ────────────────────────────────── Безопасность ──────────────────────────────────
+информационная безопасность = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+компьютерная безопасность = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+кибербезопасность = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+защита информации = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+криптография = cryptography | cryptographic mechanisms | computer security | cs.CR
+доказательства с нулевым разглашением = zero knowledge | cryptography | cryptographic mechanisms
+аутентификация = authentication | platform integrity | computer security
+обнаружение вторжений = intrusion detection | computer security | network security
+безопасность цепочки поставок = supply chain | platform integrity | computer security
+доверенная платформа = platform integrity | authentication | computer security
+
+# ────────────────────────── Данные и инфраструктура ──────────────────────────
+распределённые системы = distributed computing | cloud computing | cs.DC
+распределённые вычисления = distributed computing | cloud computing | cs.DC
+облачные вычисления = cloud computing | distributed computing | cs.DC
+операционные системы = cs.OS | distributed computing
+разработка программного обеспечения = cs.SE | software engineering
+разработка по = cs.SE | software engineering
+наблюдаемость = observability | cs.SE | cs.DC
+моделирование = simulation | cs.DC
+
+# ────────────────────────── Биотехнологии и медицина ──────────────────────────
+# Зонтичная формулировка, которой в словаре не было ни на одном языке: «биотехнологии»
+# объявлялись нераспознанным направлением на корпусе, где биологии 55 документов, вычислительной
+# биологии — 67, генетики — 64. Аналитик получал красную плашку там, где материала больше всего.
+#
+# Цели собраны из соседних био-строк, а не придуманы: зонтик обязан покрывать то, что покрывают
+# его частные случаи, иначе «биотехнологии» и «биоинформатика» спрашивали бы о разном.
+биотехнологии = biotechnology | synthetic biology | computational biology | bioinformatics | genomics | genetic engineering | q-bio.QM | q-bio.GN | q-bio.BM
+биоинформатика = bioinformatics | computational biology | q-bio.QM | q-bio.GN
+вычислительная биология = computational biology | bioinformatics | systems biology | q-bio.QM
+геномика = genomics | genetics | q-bio.GN | nucleic acid sequencing
+секвенирование = nucleic acid sequencing | sequence analysis | genomics | q-bio.GN
+молекулярная биология = q-bio.BM | nucleic acid constructs | molecular biology | cell biology
+лекарственные препараты = medicinal preparations | medicinal chemistry | organic chemistry | pharmacology
+микрофлюидика = microfluidic vessels | microfluidics | microfluidic chip
+
+# ─────────────────────────── Финансовые технологии ───────────────────────────
+# Статья собрана по разметке живого корпуса, а не по названиям рубрик (разбор 103).
+#
+# Прежняя — `fintech | finance | payments | mobile payment` — не совпадала ни с одной меткой
+# корпуса, и отбор шёл по запасному правилу, отсекающему 55% тем. Хуже было со сбором: arXiv
+# находит `finance` в названиях рубрик, и из 600 его работ 365 не содержали ни слов fintech,
+# finance или payment — вычислительная механика рубрики cs.CE и стохастическое исчисление q-fin
+# за последние пять недель. `payments` в Europe PMC — оплата медицинской помощи.
+#
+# Фразы ниже — технологии, которыми финтех называет себя сам; с ними 597 работ arXiv из 600 — о
+# финтехе, и охватывают они 2024–2026 годы, а не пять недель. Метки с `~` — рубрики, под которыми
+# arXiv размещает собранные так работы: cs.CR (211 из 600: стейблкоины, DeFi, платежи), cs.CE
+# (Computational Engineering, **Finance**, and Science), q-fin и econ. Они только для отбора: поиск
+# по коду отдаёт рубрику целиком, три тысячи работ `q-fin.GN` вытеснили бы из корпуса всё
+# остальное. Методные рубрики — cs.LG, cs.AI — не метки направления: они говорят, чем сделано, а
+# не о чём.
+#
+# `Finance` (концепт OpenAlex и рубрика Crossref) из статьи убран так же, как `Biology` у
+# биотехнологий: это вся финансовая экономика, а не финансовые технологии.
+финансовые технологии = fintech | financial technology | digital payments | mobile payment | stablecoin | decentralized finance | central bank digital currency | open banking | digital banking | anti-money laundering | ~q-fin.GN | ~q-fin.RM | ~q-fin.TR | ~q-fin.ST | ~q-fin.CP | ~q-fin.MF | ~q-fin.PM | ~q-fin.PR | ~q-fin.EC | ~econ.GN | ~econ.EM | ~econ.TH | ~cs.CE | ~cs.CR
+финтех = fintech | financial technology | digital payments | mobile payment | stablecoin | decentralized finance | central bank digital currency | open banking | digital banking | anti-money laundering | ~q-fin.GN | ~q-fin.RM | ~q-fin.TR | ~q-fin.ST | ~q-fin.CP | ~q-fin.MF | ~q-fin.PM | ~q-fin.PR | ~q-fin.EC | ~econ.GN | ~econ.EM | ~econ.TH | ~cs.CE | ~cs.CR
+платёжные технологии = payments | payment protocols | fintech
+блокчейн = blockchain | zero knowledge | fintech
+цифровые валюты = blockchain | payments | finance | fintech
+биржевая торговля = trading and exchange | q-fin.TR | finance
+экономика технологий = technological change | innovation economics | industrial organization | econ.GN
+
+# ─────────────────────────── Энергетика и материалы ───────────────────────────
+накопители энергии = solid electrolytes | electrode materials | energy engineering
+твердотельные аккумуляторы = solid electrolytes | electrode materials | energy engineering
+материаловедение = materials science | cond-mat.mtrl-sci | materials chemistry | polymer chemistry | nanotechnology
+возобновляемая энергетика = tandem photovoltaic cells | energy engineering | renewable energy | solar energy | wind power | bioenergy
+солнечная энергетика = tandem photovoltaic cells | energy engineering | physics.app-ph
+водородная энергетика = water electrolysis | energy engineering | physics.chem-ph
+атомная энергетика = nuclear reactor types | energy engineering | physics.atom-ph
+нанотехнологии = nanotechnology for it | cond-mat.mes-hall | materials science
+
+# ─────────────────────── Те же направления, набранные по-английски ───────────────────────
+#
+# Метки корпуса английские, и предполагалось, что английский запрос дойдёт до них сам. Замер это
+# опроверг: без словаря запрос сопоставляется с меткой отдельными словами, а со словарём — меткой
+# целиком, и разница оказалась не косметической.
+#
+#   «искусственный интеллект» → 383 документа направления, `artificial intelligence` → 73
+#   «кибербезопасность»       → 209,                      `cybersecurity`           →   0
+#
+# То есть аналитик, набравший направление по-английски, получал либо впятеро более узкий отчёт,
+# либо красную плашку «направление не распознано» на корпусе, полном материала по теме.
+#
+# Правые части взяты у русских строк дословно, а не подобраны заново: это один словарь, записанный
+# на двух языках. Расхождение правых частей означало бы, что один вопрос на двух языках
+# спрашивает о разном, и два отчёта нельзя было бы сравнить.
+
+artificial intelligence = artificial intelligence | machine learning | deep learning | natural language processing | nlp | computer vision | ai | cs.AI | cs.LG | cs.CL | cs.CV | stat.ML
+machine learning = machine learning | deep learning | artificial intelligence | cs.LG | stat.ML | pytorch
+deep learning = deep learning | neural network architectures | backpropagation | cs.LG
+neural networks = neural network architectures | deep learning | backpropagation | cs.LG
+natural language processing = natural language processing | natural language analysis | nlp | cs.CL
+language models = natural language processing | nlp | cs.CL | large language model
+large language models = natural language processing | nlp | cs.CL | large language model
+computer vision = computer vision | cs.CV | pattern recognition
+generative models = machine learning | cs.LG | generative model
+quantum computing = quantum computing | quantum information | quantum hardware | quant-ph
+quantum computer = quantum computing | quantum hardware | quantum information | quant-ph
+quantum technologies = quantum computing | quantum information | quantum mechanics | quant-ph
+quantum information = quantum information | quantum computing | quant-ph
+qubits = quantum hardware | quantum information | quantum computing | cond-mat.mes-hall
+quantum error correction = quantum error correction | quantum information
+quantum cryptography = quantum cryptography | quantum key distribution | quantum information
+quantum key distribution = quantum key distribution | quantum cryptography
+post-quantum cryptography = cryptography | cryptographic mechanisms | quantum cryptography | cs.CR
+information security = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+computer security = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+cybersecurity = computer security | information security | network security | data security | internet security | cloud computing security | cryptography | cs.CR
+cryptography = cryptography | cryptographic mechanisms | computer security | cs.CR
+zero-knowledge proofs = zero knowledge | cryptography | cryptographic mechanisms
+authentication = authentication | platform integrity | computer security
+intrusion detection = intrusion detection | computer security | network security
+supply chain security = supply chain | platform integrity | computer security
+distributed systems = distributed computing | cloud computing | cs.DC
+cloud computing = cloud computing | distributed computing | cs.DC
+operating systems = cs.OS | distributed computing
+software engineering = cs.SE | software engineering
+observability = observability | cs.SE | cs.DC
+bioinformatics = bioinformatics | computational biology | q-bio.QM | q-bio.GN
+computational biology = computational biology | bioinformatics | systems biology | q-bio.QM
+genomics = genomics | genetics | q-bio.GN | nucleic acid sequencing
+sequencing = nucleic acid sequencing | sequence analysis | genomics | q-bio.GN
+molecular biology = q-bio.BM | nucleic acid constructs | molecular biology | cell biology
+microfluidics = microfluidic vessels | microfluidics | microfluidic chip
+fintech = fintech | financial technology | digital payments | mobile payment | stablecoin | decentralized finance | central bank digital currency | open banking | digital banking | anti-money laundering | ~q-fin.GN | ~q-fin.RM | ~q-fin.TR | ~q-fin.ST | ~q-fin.CP | ~q-fin.MF | ~q-fin.PM | ~q-fin.PR | ~q-fin.EC | ~econ.GN | ~econ.EM | ~econ.TH | ~cs.CE | ~cs.CR
+payments = payments | payment protocols | fintech
+blockchain = blockchain | zero knowledge | fintech
+digital currencies = blockchain | payments | finance | fintech
+trading = trading and exchange | q-fin.TR | finance
+energy storage = solid electrolytes | electrode materials | energy engineering
+solid-state batteries = solid electrolytes | electrode materials | energy engineering
+materials science = materials science | cond-mat.mtrl-sci | materials chemistry | polymer chemistry | nanotechnology
+renewable energy = tandem photovoltaic cells | energy engineering | renewable energy | solar energy | wind power | bioenergy
+solar energy = tandem photovoltaic cells | energy engineering | physics.app-ph
+hydrogen energy = water electrolysis | energy engineering | physics.chem-ph
+nuclear energy = nuclear reactor types | energy engineering | physics.atom-ph
+nanotechnology = nanotechnology for it | cond-mat.mes-hall | materials science
+biotechnology = biotechnology | synthetic biology | computational biology | bioinformatics | genomics | genetic engineering | q-bio.QM | q-bio.GN | q-bio.BM
+
+# ── Направления, которых словарь не знал ──────────────────────────────────────────────
+#
+# Добавлены после сверки с финальным ТЗ и с размеченным датасетом. Датасет методологов разбит на
+# шесть областей — индустриальный ИИ, инфраструктура ИИ, роботы, финтех, защита ИИ, edge, — и три
+# из шести словарь не понимал вовсе: аналитик, набравший «робототехника» или «периферийные
+# вычисления», получал оговорку «направление не распознано».
+#
+# Правая часть — метки, которые действительно встречаются у источников: концепты OpenAlex и коды
+# arXiv. Однословные цели здесь допущены только там, где слово называет предмет само по себе
+# (`robotics`, `microelectronics`); `edge` и `agent` таким свойством не обладают и написаны
+# словосочетаниями.
+
+робототехника = robotics | cs.RO | autonomous robot | robot control | mobile robot
+роботы = robotics | cs.RO | autonomous robot | robot control | mobile robot
+робототехнические системы = robotics | cs.RO | robot control | autonomous robot
+беспилотные аппараты = unmanned aerial vehicle | autonomous robot | robotics | cs.RO
+автономные системы = autonomous robot | robotics | autonomous vehicle | cs.RO
+промышленная автоматизация = industrial engineering | automation | robotics | manufacturing
+индустриальный искусственный интеллект = artificial intelligence | manufacturing | industrial engineering | cs.LG | automation
+промышленный искусственный интеллект = artificial intelligence | manufacturing | industrial engineering | cs.LG | automation
+периферийные вычисления = edge computing | mobile edge computing | distributed computing | cs.DC
+граничные вычисления = edge computing | mobile edge computing | distributed computing | cs.DC
+туманные вычисления = edge computing | mobile edge computing | distributed computing
+интернет вещей = internet of things | edge computing | wireless sensor network | cs.NI
+встраиваемые системы = embedded system | real-time computing | cs.AR | eess.SY
+микроэлектроника = microelectronics | semiconductor | integrated circuit | cond-mat.mes-hall
+полупроводники = semiconductor | microelectronics | integrated circuit | cond-mat.mtrl-sci
+процессоры = computer architecture | cs.AR | integrated circuit | microelectronics
+ускорители вычислений = computer architecture | cs.AR | parallel computing | cs.DC
+нейроморфные вычисления = neuromorphic engineering | spiking neural network | cs.NE | cond-mat.mes-hall
+инфраструктура искусственного интеллекта = distributed computing | cs.DC | computer architecture | cs.AR | cloud computing
+обучение с подкреплением = reinforcement learning | cs.LG | machine learning
+ии-агенты = artificial intelligence | multi-agent system | cs.MA | cs.AI | large language model
+агентные системы = multi-agent system | cs.MA | artificial intelligence | cs.AI
+безопасность искусственного интеллекта = computer security | adversarial machine learning | cs.CR | cs.LG | ai safety
+защита искусственного интеллекта = computer security | adversarial machine learning | cs.CR | cs.LG | ai safety
+состязательные атаки = adversarial machine learning | computer security | cs.CR | cs.LG
+приватность данных = privacy | differential privacy | data security | cs.CR
+федеративное обучение = federated learning | distributed computing | cs.LG | cs.DC
+телекоммуникации = telecommunications | wireless network | cs.NI | eess.SP
+беспроводные сети = wireless network | telecommunications | cs.NI | eess.SP
+космические технологии = astronautics | satellite | aerospace engineering | astro-ph.IM
+медицинские технологии = medical imaging | biomedical engineering | health informatics | q-bio.QM
+фотоника = photonics | optics | physics.optics | optical communication
+оптические технологии = photonics | optics | physics.optics | optical communication
+
+robotics = robotics | cs.RO | autonomous robot | robot control | mobile robot
+edge computing = edge computing | mobile edge computing | distributed computing | cs.DC
+internet of things = internet of things | edge computing | wireless sensor network | cs.NI
+embedded systems = embedded system | real-time computing | cs.AR | eess.SY
+microelectronics = microelectronics | semiconductor | integrated circuit | cond-mat.mes-hall
+semiconductors = semiconductor | microelectronics | integrated circuit | cond-mat.mtrl-sci
+neuromorphic computing = neuromorphic engineering | spiking neural network | cs.NE | cond-mat.mes-hall
+ai agents = artificial intelligence | multi-agent system | cs.MA | cs.AI | large language model
+ai safety = computer security | adversarial machine learning | cs.CR | cs.LG | ai safety
+federated learning = federated learning | distributed computing | cs.LG | cs.DC
+photonics = photonics | optics | physics.optics | optical communication
+telecommunications = telecommunications | wireless network | cs.NI | eess.SP
+
+# Формы, которыми аналитик пишет то же самое. Дефис и латиница внутри русской фразы обычны и
+# стеммером не приводятся к основной форме: «edge-вычисления» не даёт стем «edge comput».
+edge-вычисления = edge computing | mobile edge computing | distributed computing | cs.DC
+edge = edge computing | mobile edge computing | distributed computing
+беспилотники = unmanned aerial vehicle | autonomous robot | robotics | cs.RO
+дроны = unmanned aerial vehicle | autonomous robot | robotics | cs.RO
+ии-инфраструктура = distributed computing | cs.DC | computer architecture | cs.AR | cloud computing
+центры обработки данных = distributed computing | cloud computing | cs.DC | computer architecture
+большие языковые модели и агенты = large language model | natural language processing | cs.CL | cs.AI

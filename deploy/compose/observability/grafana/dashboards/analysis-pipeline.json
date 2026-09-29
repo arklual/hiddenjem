@@ -1,0 +1,565 @@
+{
+  "uid": "horizon-analysis-pipeline",
+  "title": "Horizon / Analysis Pipeline",
+  "description": "Асинхронный конвейер: сбор корпуса -> анализ -> сборка отчёта. Отвечает на вопросы «где стоит сага», «успевает ли конвейер» и «какого качества результат отдаём». Метрики описаны в deploy/compose/observability/alerts.yml, раздел «Контракт по метрикам».",
+  "tags": ["horizon", "saga", "pipeline", "business"],
+  "timezone": "utc",
+  "editable": false,
+  "schemaVersion": 39,
+  "version": 1,
+  "refresh": "30s",
+  "time": { "from": "now-12h", "to": "now" },
+  "timepicker": { "refresh_intervals": ["10s", "30s", "1m", "5m", "15m", "1h"] },
+  "templating": {
+    "list": [
+      {
+        "name": "stage",
+        "label": "Стадия саги",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(horizon_analytics_stage_duration_seconds_bucket, stage)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      },
+      {
+        "name": "source",
+        "label": "Источник",
+        "type": "query",
+        "datasource": { "type": "prometheus", "uid": "prometheus" },
+        "query": "label_values(horizon_documents_ingested_total, source)",
+        "refresh": 2,
+        "includeAll": true,
+        "multi": true,
+        "current": { "text": "All", "value": "$__all" },
+        "sort": 1
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "row",
+      "id": 100,
+      "title": "Результат для пользователя",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 0 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 1,
+      "type": "stat",
+      "title": "Анализов завершено (24 ч)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 0, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(horizon_research_requests_total{result=\"completed\"}[24h]))",
+          "legendFormat": "completed"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "green", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 2,
+      "type": "stat",
+      "title": "Доля неполных отчётов",
+      "description": "NFR-R5: отказ источника не роняет прогон, но результат помечается partial. Устойчиво высокая доля означает системную проблему со сбором, а не единичный сбой. Порог алерта — 20%.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 4, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(horizon_research_requests_partial_total[24h])) / clamp_min(sum(increase(horizon_research_requests_total[24h])), 1)",
+          "legendFormat": "partial"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "decimals": 1,
+          "max": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.1 },
+              { "color": "red", "value": 0.2 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 3,
+      "type": "stat",
+      "title": "Трендов выдано (24 ч)",
+      "description": "Суммарное число ранжированных трендов во всех отчётах.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 8, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(horizon_trends_produced_total[24h]))",
+          "legendFormat": "trends"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 4,
+      "type": "stat",
+      "title": "Документов собрано (24 ч)",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 12, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(horizon_documents_ingested_total{source=~\"$source\"}[24h]))",
+          "legendFormat": "documents"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "value",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": { "mode": "absolute", "steps": [{ "color": "blue", "value": null }] }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 5,
+      "type": "stat",
+      "title": "Саг упало по таймауту (24 ч)",
+      "description": "Запросы, не уложившиеся в deadline_at. Каждый такой случай — это пользователь, не получивший результат.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 16, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(horizon_saga_timeouts_total[24h])) or vector(0)",
+          "legendFormat": "timeouts"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "none"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 1 },
+              { "color": "red", "value": 5 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "id": 6,
+      "type": "stat",
+      "title": "Полный цикл, p95",
+      "description": "NFR-P2: p95 <= 90 с при корпусе до 5000 документов.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 5, "w": 4, "x": 20, "y": 1 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (le) (rate(horizon_analytics_stage_duration_seconds_bucket{stage=\"total\"}[1h])))",
+          "legendFormat": "p95"
+        }
+      ],
+      "options": {
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false },
+        "colorMode": "background",
+        "graphMode": "area"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "decimals": 1,
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 90 },
+              { "color": "red", "value": 180 }
+            ]
+          }
+        },
+        "overrides": []
+      }
+    },
+    {
+      "type": "row",
+      "id": 101,
+      "title": "Стадии саги",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 6 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 10,
+      "type": "timeseries",
+      "title": "Длительность стадий, p95",
+      "description": "Стадии: COLLECTING (сбор корпуса), ANALYZING (NLP и индикаторы), ASSEMBLING (сборка отчёта). Панель отвечает на вопрос «какая стадия съедает бюджет 90 секунд».",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 0, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "histogram_quantile(0.95, sum by (stage, le) (rate(horizon_analytics_stage_duration_seconds_bucket{stage=~\"$stage\"}[10m])))",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 10,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 90 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 11,
+      "type": "timeseries",
+      "title": "Вклад стадий в общее время (среднее)",
+      "description": "Наложенные области: видно, какая стадия растёт относительно остальных. Сумма приблизительно равна средней длительности прогона.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 9, "w": 12, "x": 12, "y": 7 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (stage) (rate(horizon_analytics_stage_duration_seconds_sum{stage!=\"total\"}[10m])) / clamp_min(sum by (stage) (rate(horizon_analytics_stage_duration_seconds_count{stage!=\"total\"}[10m])), 0.001)",
+          "legendFormat": "{{stage}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 1,
+            "fillOpacity": 30,
+            "stacking": { "mode": "normal" },
+            "showPoints": "never"
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "list", "placement": "bottom" },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "type": "row",
+      "id": 102,
+      "title": "Событийный конвейер",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 16 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 20,
+      "type": "timeseries",
+      "title": "Лаг консьюмеров",
+      "description": "NFR-P5: не более 30 с. Красная линия — порог алерта HorizonConsumerLagHigh.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "max by (group, topic) (horizon_kafka_consumer_lag_seconds)",
+          "legendFormat": "{{group}} / {{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "s",
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 0,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 30 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 21,
+      "type": "timeseries",
+      "title": "Глубина outbox",
+      "description": "Неопубликованные сообщения по сервисам (ADR-0003). Важна не величина, а тренд: растущая линия означает, что публикатор отстаёт.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 8, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "horizon_outbox_pending_messages",
+          "legendFormat": "{{service}} pending"
+        },
+        {
+          "refId": "B",
+          "expr": "horizon_outbox_oldest_pending_age_seconds",
+          "legendFormat": "{{service}} возраст самого старого, с"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 2, "fillOpacity": 10, "showPoints": "never" }
+        },
+        "overrides": [
+          {
+            "matcher": { "id": "byRegexp", "options": ".*возраст.*" },
+            "properties": [
+              { "id": "unit", "value": "s" },
+              { "id": "custom.axisPlacement", "value": "right" }
+            ]
+          }
+        ]
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "id": 22,
+      "type": "timeseries",
+      "title": "Сообщения в DLQ",
+      "description": "NFR-R4. Любое ненулевое значение — инцидент: работа пользователя потеряна и вернётся только ручным повтором.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 16, "y": 17 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (topic) (increase(horizon_dlq_messages_total[10m]))",
+          "legendFormat": "{{topic}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "decimals": 0,
+          "custom": { "drawStyle": "bars", "lineWidth": 1, "fillOpacity": 70, "showPoints": "never" },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "red", "value": 1 }
+            ]
+          },
+          "color": { "mode": "thresholds" }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "multi" } }
+    },
+    {
+      "type": "row",
+      "id": 103,
+      "title": "Сбор данных",
+      "gridPos": { "h": 1, "w": 24, "x": 0, "y": 25 },
+      "collapsed": false,
+      "panels": []
+    },
+    {
+      "id": 30,
+      "type": "timeseries",
+      "title": "Документов в секунду по источникам",
+      "description": "NFR-P3: не менее 200 документов/с на реплику при нормализации и записи.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 0, "y": 26 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(horizon_documents_ingested_total{source=~\"$source\"}[5m]))",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "short",
+          "custom": { "drawStyle": "line", "lineWidth": 1, "fillOpacity": 25, "stacking": { "mode": "normal" }, "showPoints": "never" }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["mean", "max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 31,
+      "type": "timeseries",
+      "title": "Доля ошибок коннекторов",
+      "description": "Порог алерта HorizonConnectorFailureRateHigh — 25%. Внешние источники нестабильны, поэтому порог намеренно высокий.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 12, "x": 12, "y": 26 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum by (source) (rate(horizon_connector_requests_total{outcome=\"failure\", source=~\"$source\"}[10m])) / clamp_min(sum by (source) (rate(horizon_connector_requests_total{source=~\"$source\"}[10m])), 0.001)",
+          "legendFormat": "{{source}}"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 5,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.25 },
+              { "color": "red", "value": 0.95 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "calcs": ["max"] },
+        "tooltip": { "mode": "multi", "sort": "desc" }
+      }
+    },
+    {
+      "id": 32,
+      "type": "piechart",
+      "title": "Исходы запросов на исследование (24 ч)",
+      "description": "completed / failed / cancelled. Доля failed выше нескольких процентов означает, что конвейер нестабилен независимо от того, что показывают RED-метрики HTTP.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 8, "x": 0, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "instant": true,
+          "expr": "sum by (result) (increase(horizon_research_requests_total[24h]))",
+          "legendFormat": "{{result}}"
+        }
+      ],
+      "options": {
+        "legend": { "displayMode": "table", "placement": "right", "values": ["value", "percent"] },
+        "pieType": "donut",
+        "reduceOptions": { "calcs": ["lastNotNull"], "fields": "", "values": false }
+      },
+      "fieldConfig": { "defaults": { "unit": "short", "decimals": 0 }, "overrides": [] }
+    },
+    {
+      "id": 33,
+      "type": "timeseries",
+      "title": "Отношение partial к общему числу прогонов",
+      "description": "Бизнес-метрика NFR-O5. Показывает качество результата, а не техническое здоровье: система может быть полностью «зелёной» и при этом систематически отдавать неполные отчёты.",
+      "datasource": { "type": "prometheus", "uid": "prometheus" },
+      "gridPos": { "h": 8, "w": 16, "x": 8, "y": 34 },
+      "targets": [
+        {
+          "refId": "A",
+          "expr": "sum(increase(horizon_research_requests_partial_total[1h])) / clamp_min(sum(increase(horizon_research_requests_total[1h])), 1)",
+          "legendFormat": "доля partial"
+        }
+      ],
+      "fieldConfig": {
+        "defaults": {
+          "unit": "percentunit",
+          "max": 1,
+          "custom": {
+            "drawStyle": "line",
+            "lineWidth": 2,
+            "fillOpacity": 20,
+            "showPoints": "never",
+            "thresholdsStyle": { "mode": "line" }
+          },
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              { "color": "green", "value": null },
+              { "color": "orange", "value": 0.1 },
+              { "color": "red", "value": 0.2 }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "options": { "legend": { "displayMode": "list", "placement": "bottom" }, "tooltip": { "mode": "single" } }
+    }
+  ]
+}

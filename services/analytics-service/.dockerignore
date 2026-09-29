@@ -1,0 +1,71 @@
+# =============================================================================
+#  Контекст сборки analytics-service (`services/analytics-service/`).
+# =============================================================================
+#  В образ попадает только пакет horizon_analytics, requirements.txt и entrypoint.
+# =============================================================================
+
+# ─── Виртуальные окружения и кэши интерпретатора ───
+.venv/
+venv/
+env/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# ─── Кэши инструментов ───
+.mypy_cache/
+.dmypy.json
+.ruff_cache/
+.pytest_cache/
+.tox/
+.nox/
+.hypothesis/
+.mutmut-cache
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.ipynb_checkpoints/
+
+# ─── Тесты и dev-зависимости: в runtime-образе им не место ───
+tests/
+test/
+requirements-dev.txt
+pytest.ini
+tox.ini
+conftest.py
+
+# ─── Сборочные артефакты пакета ───
+build/
+dist/
+*.egg-info/
+.eggs/
+
+# ─── Docker ───
+Dockerfile
+.dockerignore
+
+# ─── Секреты (страховка, NFR-S2) ───
+.env
+.env.*
+*.pem
+*.key
+secrets/
+
+# ─── VCS, IDE, ОС ───
+.git
+.gitignore
+.github/
+.idea/
+.vscode/
+*.iml
+.DS_Store
+Thumbs.db
+*~
+
+# ─── Документация ───
+*.md
+docs/

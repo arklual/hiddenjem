@@ -1,0 +1,182 @@
+{{/*
+=============================================================================
+  Deployment — один шаблон на все рабочие нагрузки
+=============================================================================
+  Семь Deployment (шесть сервисов; analytics-service — две роли, ADR-0014)
+  описываются одним файлом. Альтернатива — семь почти одинаковых манифестов,
+  которые расходятся при первой же правке securityContext, и половина сервисов
+  тихо остаётся без неё.
+=============================================================================
+*/}}
+{{- $root := . -}}
+{{- range $name, $rawSvc := .Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+  annotations:
+    {{- with $root.Values.global.commonAnnotations }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  {{- /* При включённом HPA поле replicas не задаётся: иначе каждый
+         `helm upgrade` возвращает число реплик к значению из values
+         и отменяет решение автоскейлера. */}}
+  {{- if not $svc.hpa.enabled }}
+  replicas: {{ $svc.replicas }}
+  {{- end }}
+  revisionHistoryLimit: {{ $svc.revisionHistoryLimit }}
+  strategy:
+    {{- toYaml $svc.strategy | nindent 4 }}
+  selector:
+    matchLabels:
+      {{- include "horizon.selectorLabels" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "horizon.commonLabels" $ctx | nindent 8 }}
+      annotations:
+        {{- /* Хеш конфигурации: без него правка ConfigMap не перезапускает поды,
+               и они месяцами работают со старыми значениями. */}}
+        checksum/config: {{ toYaml $svc.config | sha256sum }}
+        {{- if and $svc.metrics.enabled (not $root.Values.observability.prometheus.serviceMonitor.enabled) }}
+        {{- /* Аннотации нужны только там, где нет prometheus-operator. */}}
+        prometheus.io/scrape: "true"
+        prometheus.io/path: {{ $svc.metrics.path | quote }}
+        prometheus.io/port: {{ (default $svc.port $svc.metrics.port) | quote }}
+        {{- end }}
+        {{- with $root.Values.global.commonAnnotations }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+    spec:
+      serviceAccountName: {{ include "horizon.serviceAccountName" $ctx }}
+      {{- /* Ни один сервис Horizon не обращается к API Kubernetes. */}}
+      automountServiceAccountToken: {{ $svc.serviceAccount.automountServiceAccountToken }}
+      securityContext:
+        {{- include "horizon.podSecurityContext" $ctx | nindent 8 }}
+      terminationGracePeriodSeconds: {{ $svc.terminationGracePeriodSeconds }}
+      {{- with $root.Values.global.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.priorityClassName }}
+      priorityClassName: {{ . }}
+      {{- end }}
+      {{- with $svc.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $svc.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- /* Реплики раскладываются по зонам и узлам: падение одной зоны
+             не должно уносить сервис целиком (NFR-P4, NFR-R1).
+             labelSelector подставляется здесь, а не в values, чтобы его
+             нельзя было забыть при добавлении нового сервиса. */}}
+      {{- with $svc.topologySpreadConstraints }}
+      topologySpreadConstraints:
+        {{- range . }}
+        - maxSkew: {{ .maxSkew }}
+          topologyKey: {{ .topologyKey }}
+          whenUnsatisfiable: {{ .whenUnsatisfiable }}
+          labelSelector:
+            matchLabels:
+              {{- include "horizon.selectorLabels" $ctx | nindent 14 }}
+        {{- end }}
+      {{- end }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "horizon.image" (dict "root" $root "svc" $svc) | quote }}
+          imagePullPolicy: {{ $root.Values.global.imagePullPolicy }}
+          {{- with $svc.args }}
+          args:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $svc.port }}
+              protocol: TCP
+            {{- if and $svc.metrics.enabled $svc.metrics.port (ne (int $svc.metrics.port) (int $svc.port)) }}
+            - name: metrics
+              containerPort: {{ $svc.metrics.port }}
+              protocol: TCP
+            {{- end }}
+          env:
+            {{- include "horizon.commonEnv" $ctx | nindent 12 }}
+            {{- include "horizon.otelEnv" $ctx | nindent 12 }}
+            {{- with $svc.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          envFrom:
+            {{- /* Несекретная конфигурация сервиса. */}}
+            - configMapRef:
+                name: {{ include "horizon.workloadName" $ctx }}
+            {{- /* Секреты: пароли БД, мастер-ключ подписи, ключи внешних API.
+                   В репозитории их нет (NFR-S2) — Secret наполняет External
+                   Secrets Operator из корпоративного хранилища.
+                   optional: false намеренно: сервис обязан упасть на старте,
+                   если секретов нет, а не подняться с пустыми паролями. */}}
+            - secretRef:
+                name: {{ $root.Values.secrets.name }}
+                optional: false
+          resources:
+            {{- toYaml $svc.resources | nindent 12 }}
+          securityContext:
+            {{- include "horizon.containerSecurityContext" $ctx | nindent 12 }}
+          {{- /* startupProbe закрывает медленный старт (JVM + миграции Flyway),
+                 поэтому liveness может быть агрессивной и не убивать
+                 ещё не поднявшийся под. */}}
+          startupProbe:
+            {{- include "horizon.probe" (dict "root" $root "svc" $svc "probe" $svc.probes.startup "kind" $svc.probes.type "port" "http") | nindent 12 }}
+          livenessProbe:
+            {{- include "horizon.probe" (dict "root" $root "svc" $svc "probe" $svc.probes.liveness "kind" $svc.probes.type "port" "http") | nindent 12 }}
+          readinessProbe:
+            {{- include "horizon.probe" (dict "root" $root "svc" $svc "probe" $svc.probes.readiness "kind" $svc.probes.type "port" "http") | nindent 12 }}
+          {{- /* preStop: пауза перед SIGTERM. Удаление пода из Endpoints и
+                 остановка контейнера идут параллельно, поэтому без задержки
+                 балансировщик успевает прислать запросы уже закрывающемуся
+                 процессу — это те самые 502 при каждом rolling update. */}}
+          {{- if gt (int $svc.lifecycle.preStopSleepSeconds) 0 }}
+          lifecycle:
+            preStop:
+              exec:
+                command: ["/bin/sh", "-c", "sleep {{ $svc.lifecycle.preStopSleepSeconds }}"]
+          {{- end }}
+          volumeMounts:
+            {{- /* readOnlyRootFilesystem: true, поэтому все записываемые пути
+                   монтируются явно. Список — часть контракта образа. */}}
+            {{- range $svc.writableVolumes }}
+            - name: {{ .name }}
+              mountPath: {{ .mountPath }}
+            {{- end }}
+            {{- with $svc.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        {{- range $svc.writableVolumes }}
+        - name: {{ .name }}
+          emptyDir:
+            {{- /* sizeLimit обязателен: без него под может занять весь
+                   эфемерный диск узла и выселить соседей. */}}
+            sizeLimit: {{ .sizeLimit }}
+            {{- if .memory }}
+            medium: Memory
+            {{- end }}
+        {{- end }}
+        {{- with $svc.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,154 @@
+# =============================================================================
+#  Prometheus — сбор метрик локального стека (NFR-O2)
+# =============================================================================
+#  Модель — pull: Prometheus сам ходит за метриками. Это важно не из идеологии,
+#  а практически: «таргет недоступен» становится наблюдаемым фактом (метрика
+#  `up`), тогда как при push-модели молчащий сервис неотличим от исправного.
+#
+#  Имена таргетов — это имена сервисов в docker-сети `horizon`; они совпадают
+#  с именами в docker-compose.yml и с именами Service в Helm-чарте.
+# =============================================================================
+
+global:
+  scrape_interval: 15s
+  scrape_timeout: 10s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: horizon-local
+    environment: local
+
+rule_files:
+  - /etc/prometheus/alerts.yml
+
+# Alertmanager в локальном стеке не поднимается: правила нужны для того, чтобы
+# их можно было читать, тестировать (promtool) и держать в репозитории (NFR-O4),
+# а не для того, чтобы будить разработчика ночью.
+# alerting:
+#   alertmanagers:
+#     - static_configs:
+#         - targets: ['alertmanager:9093']
+
+scrape_configs:
+
+  # ─────────────────────────── Сам Prometheus ───────────────────────────
+  - job_name: prometheus
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          component: observability
+
+  # ─────────────────────────── OTel Collector ───────────────────────────
+  # 8888 — собственные метрики коллектора (сколько принято/отброшено).
+  # Именно они отвечают на вопрос «трейсы не видно — их не шлют или их теряют?».
+  - job_name: otel-collector
+    static_configs:
+      - targets: ['otel-collector:8888']
+        labels:
+          component: observability
+
+  # 8889 — метрики приложений, пришедшие через OTLP и переложенные в Prometheus.
+  - job_name: otel-collector-app-metrics
+    static_configs:
+      - targets: ['otel-collector:8889']
+        labels:
+          component: application
+
+  # ─────────────────────────── Java-сервисы ───────────────────────────
+  # Spring Boot Actuator отдаёт метрики Micrometer на /actuator/prometheus.
+  # Все три собраны одним job: одинаковый путь, одинаковый набор метрик,
+  # различие только в метке `job`/`service` — это упрощает и запросы, и алерты.
+  - job_name: horizon-java
+    metrics_path: /actuator/prometheus
+    static_configs:
+      - targets: ['gateway:8080']
+        labels:
+          service: gateway
+          tier: edge
+      - targets: ['trends-service:8082']
+        labels:
+          service: trends-service
+          tier: application
+      - targets: ['ingestion-service:8083']
+        labels:
+          service: ingestion-service
+          tier: application
+    relabel_configs:
+      # `instance` по умолчанию = host:port. Подменяем на имя сервиса:
+      # порт в имени инстанса ничего не добавляет, а запросы делает шумными.
+      - source_labels: [service]
+        target_label: instance
+
+  # ─────────────────────────── nlp-service (ADR-0017) ───────────────────────────
+  # Служба вывода моделей. Её отказ особенно тих: отчёт выходит без русского слоя и без
+  # семантического фильтра, то есть выглядит нормальным. Без опроса заметить это было бы нечем.
+  - job_name: horizon-nlp-service
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['nlp-service:8086']
+        labels:
+          service: nlp-service
+          tier: application
+    relabel_configs:
+      - source_labels: [service]
+        target_label: instance
+
+  # ─────────────────────────── analytics-service (Python) ───────────────────────────
+  # FastAPI-роль отдаёт /metrics через prometheus_client (ADR-0014).
+  - job_name: horizon-analytics-api
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['analytics-api:8000']
+        labels:
+          service: analytics-service
+          role: api
+          tier: application
+    relabel_configs:
+      - source_labels: [service]
+        target_label: instance
+
+  # Роль worker HTTP-API не имеет: она поднимает отдельный слушатель
+  # prometheus_client на HORIZON_METRICS_PORT. Без этого метрики самого
+  # долгого этапа конвейера остались бы невидимыми.
+  - job_name: horizon-analytics-worker
+    metrics_path: /metrics
+    static_configs:
+      - targets: ['analytics-worker:9100']
+        labels:
+          service: analytics-service
+          role: worker
+          tier: application
+    relabel_configs:
+      - source_labels: [service]
+        target_label: instance
+
+  # ─────────────────────────── Инфраструктура ───────────────────────────
+  # Redpanda отдаёт метрики в формате Prometheus из коробки, экспортер не нужен.
+  - job_name: redpanda
+    metrics_path: /public_metrics
+    static_configs:
+      - targets: ['redpanda:9644']
+        labels:
+          component: broker
+
+  # ClickHouse: встроенный эндпоинт включается в config.d (prometheus.endpoint).
+  # Оставлено выключенным, чтобы не расширять поверхность на локальной машине;
+  # в проде включается вместе с сетевой политикой.
+  # - job_name: clickhouse
+  #   metrics_path: /metrics
+  #   static_configs:
+  #     - targets: ['clickhouse:9363']
+
+  # PostgreSQL и Redis собственных Prometheus-эндпоинтов не имеют. Для их
+  # метрик нужны отдельные экспортеры; в локальный стек они не включены
+  # осознанно — это ещё два контейнера ради данных, которые локально
+  # диагностируются быстрее через psql/redis-cli.
+  # В Kubernetes они разворачиваются оператором и скрейпятся через ServiceMonitor.
+  # - job_name: postgres
+  #   static_configs:
+  #     - targets: ['postgres-exporter:9187']
+  # - job_name: redis
+  #   static_configs:
+  #     - targets: ['redis-exporter:9121']
+
+  # frontend (nginx) метрик не отдаёт: штатный образ не содержит модуля
+  # экспорта. Здоровье фронта видно по внешним пробам и по 5xx на шлюзе.

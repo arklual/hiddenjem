@@ -1,0 +1,117 @@
+{
+ "total": 1,
+ "max_score": 16.891047,
+ "data": [
+  {
+   "lens_id": "031-156-664-516-153",
+   "jurisdiction": "EP",
+   "doc_number": "2471949",
+   "kind": "A1",
+   "date_published": "2012-07-04",
+   "publication_type": "PATENT_APPLICATION",
+   "lang": "en",
+   "abstract": [
+    {
+     "text": "The invention relates to the field of genotyping and blood cell antigen determination. In particular, the invention adresses the problem of discriminating the RHD*DIIIa-CE(4-7)-D or RHD*DIIIa-CE(4-7)-D )-like blood type variants, which express the C +w antigen and lack a D antigen, from RHD*DIIIa , RHD*DIVa-2 and other blood type variants. The invention provides methods for genotyping a subject, comprising: a) determining at least 4 markers in a sample that has been obtained from the subject, wherein the markers comprise: (i) the presence or absence of an RHCE*C allele; (ii) the presence or absence of an RHD/RHCE hybrid exon 3 (RHD/CE Hex03) allele; (iii) the absence of, or a single nucleotide polymorphism (SNP) variant within, of any one of the SNPs at position 602 of RHD exon 4, position 667 of RHD exon 5, or position 819 of RHD exon 6; and (iv) the absence of, or SNP variant within, of the SNP at position 1048 of RHD exon 7. The invention also provides products, in particular, probes, primers and kits for use in such methods.",
+     "lang": "en"
+    }
+   ],
+   "biblio": {
+    "invention_title": [
+     {
+      "text": "Verfahren zur Identifizierung durch Molekulartechniken von genetischen Varianten, die kein D-Antigen (D-) und das veränderte C-Antigen (C+W) codieren",
+      "lang": "de"
+     },
+     {
+      "text": "Method for the identification by molecular techniques of genetic variants that encode no D antigen (D-) and altered C antigen (C+W)",
+      "lang": "en"
+     },
+     {
+      "text": "Procédé pour l'identification par des techniques moléculaires de variantes génétiques ne codant pas d'antigène D (D-) et qui codent l'antigène C modifié (C+W)",
+      "lang": "fr"
+     }
+    ],
+    "classifications_cpc": {
+     "classifications": [
+      {
+       "symbol": "C12Q1/6881",
+       "classification_value": "I",
+       "classification_symbol_position": "F"
+      },
+      {
+       "symbol": "C12Q2600/156",
+       "classification_value": "A",
+       "classification_symbol_position": "L"
+      },
+      {
+       "symbol": "C12Q1/6881",
+       "classification_value": "I",
+       "classification_symbol_position": "F"
+      },
+      {
+       "symbol": "A61K35/14",
+       "classification_value": "I",
+       "classification_symbol_position": "L"
+      },
+      {
+       "symbol": "C12Q2600/156",
+       "classification_value": "A",
+       "classification_symbol_position": "L"
+      }
+     ]
+    },
+    "parties": {
+     "applicants": [
+      {
+       "residence": "ES",
+       "extracted_name": {
+        "value": "PROGENIKA BIOPHARMA SA"
+       }
+      }
+     ],
+     "inventors": [
+      {
+       "residence": "ES",
+       "sequence": 1,
+       "extracted_name": {
+        "value": "OCHOA JORGE"
+       }
+      },
+      {
+       "residence": "ES",
+       "sequence": 2,
+       "extracted_name": {
+        "value": "LOPEZ MONICA"
+       }
+      },
+      {
+       "residence": "ES",
+       "sequence": 3,
+       "extracted_name": {
+        "value": "TEJEDOR DIEGO"
+       }
+      },
+      {
+       "residence": "ES",
+       "sequence": 4,
+       "extracted_name": {
+        "value": "MARTINEZ ANTONIO"
+       }
+      },
+      {
+       "residence": "ES",
+       "sequence": 5,
+       "extracted_name": {
+        "value": "SIMON LAUREANO"
+       }
+      }
+     ]
+    }
+   },
+   "legal_status": {
+    "granted": true
+   }
+  }
+ ],
+ "results": 1
+}

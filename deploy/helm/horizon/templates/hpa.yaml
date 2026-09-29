@@ -1,0 +1,101 @@
+{{/*
+=============================================================================
+  HorizontalPodAutoscaler
+=============================================================================
+  Разные сервисы упираются в разное, поэтому и метрики масштабирования разные:
+
+    gateway, trends-service  — CPU + RPS. Шлюз и ядро домена упираются в число
+      одновременных запросов раньше, чем в CPU: по одному CPU они добавляют
+      реплики уже после того, как очередь выросла и latency ушла за SLO.
+
+    ingestion-service        — CPU. Здесь узкое место — сеть и лимиты источников,
+      но CPU — единственный сигнал, доступный без внешних метрик.
+
+    analytics-worker         — ВНЕШНЯЯ метрика: лаг консьюмера Kafka.
+      CPU здесь бесполезен: воркер либо простаивает в ожидании сообщения (0%),
+      либо считает анализ (100%). Ни то, ни другое не говорит о том, нужны ли
+      ещё реплики. Настоящий признак нехватки ёмкости — растущая очередь команд.
+
+  Метрики типов Pods и External поставляет prometheus-adapter (или KEDA).
+  Без него HPA останется в состоянии `ScalingActive=False` и продолжит
+  работать по CPU, если тот задан, — это осознанная деградация, а не отказ.
+=============================================================================
+*/}}
+{{- $root := . -}}
+{{- range $name, $rawSvc := .Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- if $svc.hpa.enabled }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "horizon.workloadName" $ctx }}
+  minReplicas: {{ $svc.hpa.minReplicas }}
+  maxReplicas: {{ $svc.hpa.maxReplicas }}
+  metrics:
+    {{- /* CPU можно отключить, поставив 0: для analytics-worker он не просто
+           бесполезен, а вреден — вызывает масштабирование на каждом прогоне. */}}
+    {{- if gt (int $svc.hpa.targetCPUUtilizationPercentage) 0 }}
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $svc.hpa.targetCPUUtilizationPercentage }}
+    {{- end }}
+    {{- with $svc.hpa.memoryUtilizationPercentage }}
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: {{ . }}
+    {{- end }}
+    {{- /* Pods: значение метрики делится на число подов. Для RPS это ровно
+           то, что нужно: «сколько запросов в секунду держит одна реплика». */}}
+    {{- range $svc.hpa.pods }}
+    - type: Pods
+      pods:
+        metric:
+          name: {{ .metric }}
+          {{- with .selector }}
+          selector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        target:
+          type: AverageValue
+          averageValue: {{ .averageValue | quote }}
+    {{- end }}
+    {{- /* External: метрика не привязана к подам — лаг принадлежит группе
+           консьюмеров, а не конкретной реплике. Селектор обязателен, иначе
+           HPA среагирует на лаг чужого потребителя того же топика. */}}
+    {{- range $svc.hpa.external }}
+    - type: External
+      external:
+        metric:
+          name: {{ .metric }}
+          {{- with .selector }}
+          selector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+        target:
+          type: AverageValue
+          averageValue: {{ .targetAverageValue | quote }}
+    {{- end }}
+  {{- with $svc.hpa.behavior }}
+  behavior:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

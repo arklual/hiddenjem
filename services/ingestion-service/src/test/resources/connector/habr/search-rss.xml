@@ -1,0 +1,533 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/" >
+
+  <channel>
+    <title><![CDATA[Результаты поиска по запросу «speculative decoding»]]></title>
+    <link>https://habr.com/ru/</link>
+    <description><![CDATA[Результаты поиска по запросу «speculative decoding»]]></description>
+    <language>ru</language>
+    <managingEditor>editor@habr.com</managingEditor>
+    <generator>habr.com</generator>
+    <pubDate>Sat, 26 Sep 2026 18:13:46 GMT</pubDate>
+    
+    
+      <image>
+        <link>https://habr.com/ru/</link>
+        <url>https://habrastorage.org/webt/ym/el/wk/ymelwk3zy1gawz4nkejl_-ammtc.png</url>
+        <title>Хабр</title>
+      </image>
+    
+
+    
+      
+        
+    
+    <item>
+      <title><![CDATA[Дело о 38 токенах в секунду: почему M3 Ultra начинал с двенадцати]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1075706/</guid>
+      <link>https://habr.com/ru/articles/1075706/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1075706</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/4bd/1a2/0be/4bd1a20be5c9487c37c15d83c9006f59.jpg" /><p>Всё началось с простой, на первый взгляд, задачи.</p><p>Я хотел использовать локально Qwen3.8-27B именно в BF16. Причём не исходный PyTorch-чекпойнт через случайный слой совместимости, а <code>mlx-community/Qwen3.8-27B-bf16</code> — специально подготовленную в формате MLX версию для Apple Silicon. Вся линейка Qwen3.8 от mlx-community конвертирована именно для запуска на процессорах Apple.</p><p>То есть модель уже была адаптирована под архитектуру Mac. Без 8-битной или 4-битной квантизации, потому что исходный приоритет был не в том, чтобы любой ценой получить красивую цифру в бенчмарке. Мне нужна была максимальная точность модели для сложного анализа, работы с кодом и длинных рассуждений.</p><p>Казалось, что с железом проблем точно не будет.</p><p>Моя конфигурация — Mac Studio 2025 года (<code>Mac15,14</code>, заказной номер <code>Z1CE001BMZP/A</code>) с Apple M3 Ultra: 32 ядра CPU, из них 24 производительных, 80 ядер GPU, 512 ГБ объединённой памяти и SSD на 2 ТБ. Заявленная Apple пропускная способность памяти — <strong>819 ГБ/с</strong>.</p><p>То есть перед нами не ноутбук, который случайно заставили считать большую языковую модель. Это максимальная конфигурация M3 Ultra по CPU, GPU и объёму памяти.</p><p>И на ней оптимизированная для Apple Silicon версия Qwen3.8-27B в BF16 выдавала всего <strong>12 токенов в секунду</strong>.</p><p>Сначала результат выглядел подозрительно. В машине десятки CPU- и GPU-ядер, модель целиком помещается в память, используется нативный для Apple Silicon фреймворк MLX. Почему тогда скорость совсем не похожа на то, чего ждёшь от топового GPU?</p><p>Я начал искать узкое место.</p> <a href="https://habr.com/ru/articles/1075706/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1075706#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Fri, 28 Aug 2026 09:05:36 GMT</pubDate>
+      <dc:creator><![CDATA[Homosum]]></dc:creator>
+      <category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Компьютерное железо]]></category>
+      <category><![CDATA[Qwen3.8-27B]]></category><category><![CDATA[DFlash2]]></category><category><![CDATA[oMLX]]></category><category><![CDATA[MLX]]></category><category><![CDATA[Apple Silicon]]></category><category><![CDATA[Mac Studio M3 Ultra]]></category><category><![CDATA[локальные LLM]]></category><category><![CDATA[инференс LLM]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[BF16]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Давай по новой, Миша: speculative decoding от черновика до проверки]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1081826/</guid>
+      <link>https://habr.com/ru/articles/1081826/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1081826</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/b95/d7d/c24/b95d7dc24539186c38f3e6bc1163df81.jpg" /><p>Маленькая модель быстро набрасывает несколько следующих токенов, а большая проверяет всю пачку за один проход. Совпавшее оставляет, на первом расхождении переписывает продолжение сама, поэтому ускорение не меняет распределение ответа. В speculative decoding большая модель буквально говорит черновой: «Давай по новой, Миша».</p><p>На первый взгляд кажется, что ускорение здесь обязательно покупается ценой качества. Но нет: это как раз тот случай, когда можно ускорить генерацию без такого компромисса.</p><p>Далее разберём весь цикл: как работает черновая модель, по какому правилу принимаются токены, какого размера должен быть draft, почему важен одинаковый токенизатор и как всё это включить в Transformers и vLLM.</p><p>Отдельно посмотрим на подходы, где вторая модель вообще не нужна: EAGLE, Medusa, LayerSkip и DFlash.</p> <a href="https://habr.com/ru/articles/1081826/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1081826#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Tue, 22 Sep 2026 09:09:00 GMT</pubDate>
+      <dc:creator><![CDATA[GG1KENOBI]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Python]]></category><category><![CDATA[Natural Language Processing]]></category><category><![CDATA[Программирование]]></category>
+      <category><![CDATA[speculative decoding]]></category><category><![CDATA[llm]]></category><category><![CDATA[инференс]]></category><category><![CDATA[eagle]]></category><category><![CDATA[medusa]]></category><category><![CDATA[vllm]]></category><category><![CDATA[transformers]]></category><category><![CDATA[kv cache]]></category><category><![CDATA[dflash]]></category><category><![CDATA[оптимизация]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Qwen3.8–27B на двух RTX 3060 12ГБ: как я разогнал OpenCode с ~9 до ~40 токенов/с при 128K контекста]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1086742/</guid>
+      <link>https://habr.com/ru/articles/1086742/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1086742</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/564/533/74f/56453374f1fc4d244662eb37052c4679.jpg" /><p>Можно&nbsp;ли превратить две RTX 3060 12&nbsp;ГБ на&nbsp;старой Z97-платформе в&nbsp;нормальный локальный backend для&nbsp;OpenCode? Я начал с 9&nbsp;токенов/с на&nbsp;длинном контексте и в&nbsp;итоге получил около 40&nbsp;токенов/с в&nbsp;реальной агентной сессии с&nbsp;контекстом за 100K без&nbsp;уменьшения модели и без&nbsp;отказа от 128K.</p><p>В&nbsp;статье&nbsp;— tensor split без&nbsp;CUDA P2P, Q8&nbsp;KV‑cache, встроенный MTP, подбор <code>n-max</code>, неудачные эксперименты с&nbsp;NCCL и shared buffers, реальные long‑context тесты и проверка качества на&nbsp;coding‑задачах.</p> <a href="https://habr.com/ru/articles/1086742/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1086742#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Fri, 25 Sep 2026 12:59:20 GMT</pubDate>
+      <dc:creator><![CDATA[webthefirst]]></dc:creator>
+      <category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Видеокарты]]></category><category><![CDATA[Компьютерное железо]]></category><category><![CDATA[GPGPU]]></category>
+      <category><![CDATA[Qwen3.8]]></category><category><![CDATA[llama.cpp]]></category><category><![CDATA[RTX 3060]]></category><category><![CDATA[local LLM]]></category><category><![CDATA[MTP]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[multi-GPU]]></category><category><![CDATA[GGUF]]></category><category><![CDATA[OpenCode]]></category><category><![CDATA[KV cache]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+	
+	<item>
+		<title><![CDATA[Gemma 4 стала быстрее в 3 раза без потери качества]]></title>
+    <guid isPermaLink="true">https://habr.com/ru/news/1031968/</guid>
+		<link>https://habr.com/ru/news/1031968/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1031968</link>
+		<description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/bf4/46f/c3e/bf446fc3e52838ef19157311a9049ec4.png" /><p>Google <a href="https://blog.google/innovation-and-ai/technology/developers-tools/multi-token-prediction-gemma-4/" rel="noopener noreferrer nofollow">открыла</a> веса вспомогательных моделей для всей линейки Gemma 4 — E2B, E4B, 26B MoE и 31B Dense. Они доступны на <a href="https://huggingface.co/collections/google/gemma-4" rel="noopener noreferrer nofollow">Hugging Face</a> и <a href="https://www.kaggle.com/models/google/gemma-4" rel="noopener noreferrer nofollow">Kaggle</a> под Apache 2.0 и уже работают с transformers, MLX, vLLM, SGLang и Ollama.</p><p>Стандартная генерация токенов устроена неэффективно: процессор большую часть времени тратит не на вычисления, а на перекачку весов модели из памяти. Из-за этого даже мощные GPU простаивают, пока генерируется один токен.</p> <a href="https://habr.com/ru/articles/1031968/#habracut">Читать далее</a>]]></description>
+		
+		<pubDate>Wed, 06 May 2026 07:57:12 GMT</pubDate>
+    <dc:creator><![CDATA[python_leader]]></dc:creator>
+		<category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Будущее здесь]]></category><category><![CDATA[Open source]]></category>
+		<category><![CDATA[Gemma 4]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[multi-token prediction]]></category><category><![CDATA[MTP drafters]]></category><category><![CDATA[inference speed]]></category><category><![CDATA[open source]]></category><category><![CDATA[Hugging Face]]></category><category><![CDATA[vLLM]]></category><category><![CDATA[LLM inference]]></category><category><![CDATA[локальный запуск]]></category>
+	</item>
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Как мы запустили Ornith‑35B на ноутбуке с 8 ГБ VRAM и разогнали её до 99 ток/с на AMD Strix Halo]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1060632/</guid>
+      <link>https://habr.com/ru/articles/1060632/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1060632</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/acc/f8b/342/accf8b34202f33a6637089fcc7a1deb6.jpg" /><p>Ornith‑1.0‑35B обошла Qwen3.5‑397B в Terminal‑Bench, а на нашем локальном срезе хорошо показала себя в агентном кодинге. Мы решили проверить, насколько быстрее она сможет работать на AMD Strix Halo с пропускной способностью памяти до 256 ГБ/с.</p><p>В статье — результаты экспериментов с Vulkan, MTP, селективной квантизацией и n‑gram reuse: что не дало прироста, как удалось получить 99 ток/с без потери качества и каким способом 35B‑модель запустилась на Windows‑ноутбуке с 8 ГБ VRAM.</p> <a href="https://habr.com/ru/articles/1060632/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1060632#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Sun, 19 Jul 2026 23:10:39 GMT</pubDate>
+      <dc:creator><![CDATA[PetrUfa]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Open source]]></category><category><![CDATA[Видеокарты]]></category><category><![CDATA[Linux]]></category><category><![CDATA[Windows]]></category>
+      <category><![CDATA[llama.cpp]]></category><category><![CDATA[Vulkan]]></category><category><![CDATA[AMD Strix Halo]]></category><category><![CDATA[Ornith]]></category><category><![CDATA[MoE]]></category><category><![CDATA[MTP]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[GGUF]]></category><category><![CDATA[LM Studio]]></category><category><![CDATA[локальные LLM]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[DSpark на двух DGX Spark: порт, баг на одну строку и бенчмарки, которые пришлось мерить заново]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1055792/</guid>
+      <link>https://habr.com/ru/articles/1055792/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1055792</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/33f/707/7f9/33f7077f9026a727dc2efe63ef66dcbe.png" /><p>DeepSeek выпустил DSpark&nbsp;— спекулятивный декодер для&nbsp;V4. В&nbsp;окне 27–30&nbsp;июня 2026&nbsp;рабочего публичного пути для&nbsp;GB10&nbsp;не&nbsp;было&nbsp;— мы портировали его сами, нашли унаследованный баг, убивавший качество драфта, и сняли профиль своего стенда. Потом комьюнити выложило рецепт вдвое&nbsp;быстрее нашего. Мы его воспроизвели&nbsp;— и вместо гонки за&nbsp;цифрой сняли данные, которых в&nbsp;паблике не&nbsp;нашли: кривую деградации до&nbsp;реального 1M, механизм выигрыша NVFP4&nbsp;и петли когерентности на&nbsp;глубине. Плюс три негативных результата. </p> <a href="https://habr.com/ru/articles/1055792/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1055792#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Sun, 05 Jul 2026 16:22:00 GMT</pubDate>
+      <dc:creator><![CDATA[AGmind]]></dc:creator>
+      <category><![CDATA[Open source]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category>
+      <category><![CDATA[dgx spark]]></category><category><![CDATA[deepseek]]></category><category><![CDATA[vllm]]></category><category><![CDATA[спекулятивный декодинг]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[dspark]]></category><category><![CDATA[llm-инференс]]></category><category><![CDATA[бенчмарки]]></category><category><![CDATA[nvfp4]]></category><category><![CDATA[nvfp8]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[DeepSeek 0731 на DGX Spark: разгоняю до 68 tok/s и разбираюсь, почему у автора карточки 57]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1066164/</guid>
+      <link>https://habr.com/ru/articles/1066164/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1066164</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/777/f9b/d03/777f9bd0324db51edc13b7d82dbaf251.png" /><p>TL;DR</p><p><strong>Железо:</strong>&nbsp;2× NVIDIA DGX Spark (GB10, SM121), 128&nbsp;GB unified номинально и около 122&nbsp;GiB видимых системе на&nbsp;ноду, QSFP 200G / RoCEv2, TP=2, драйвер 580.159.03.</p><p><strong>Основную часть расхождения объяснила смена runtime‑образа.</strong>&nbsp;Переход со сборки на&nbsp;базе vLLM 0.21.1&nbsp;на&nbsp;образ с 0.25.2&nbsp;дал около +22% на&nbsp;том&nbsp;же чекпоинте. Конкретный коммит или&nbsp;компонент я не&nbsp;изолировал: поменялся весь пакет.</p><p><strong>Механика неочевидная:</strong>&nbsp;новый образ снизил расчётную частоту verification‑шагов примерно на 17%, но&nbsp;поднял число выходных токенов за&nbsp;шаг с 3.27&nbsp;до 4.80.</p><p><strong>Главная находка в&nbsp;конфиге:</strong>&nbsp;<code>--moe-backend flashinfer_b12x</code>&nbsp;не&nbsp;выбирается режимом&nbsp;<code>auto</code>. Явное включение дало +13.3% по&nbsp;среднему пяти прогонов на&nbsp;card‑like профиле (59.7&nbsp;против 67.6) и +16.6% по&nbsp;медиане.</p><p><strong>B12X работает иначе:</strong>&nbsp;поднимает SSE‑derived частоту verification‑шагов на 16–18%, при&nbsp;этом выходные токены за&nbsp;шаг снижаются примерно на 2.5% в&nbsp;обоих профилях. Итоговый прирост клиентской decode‑метрики составил 13.3–14.6% по&nbsp;средним и 15.6–16.6% по&nbsp;медианам.</p><p><strong>Итог:</strong>&nbsp;67.6&nbsp;tok/s на&nbsp;одиночном запросе, 260&nbsp;tok/s суммарно на 12&nbsp;параллельных запросов.</p><p>Отрицательные результаты, погрешности и границы применимости вынесены в&nbsp;отдельные разделы.</p> <a href="https://habr.com/ru/articles/1066164/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1066164#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Mon, 03 Aug 2026 14:32:45 GMT</pubDate>
+      <dc:creator><![CDATA[AGmind]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Natural Language Processing]]></category><category><![CDATA[Open source]]></category>
+      <category><![CDATA[DGX Spark]]></category><category><![CDATA[vLLM]]></category><category><![CDATA[LLM инференс]]></category><category><![CDATA[бенчмарк]]></category><category><![CDATA[спекулятивное декодирование]]></category><category><![CDATA[GB10]]></category><category><![CDATA[MoE]]></category><category><![CDATA[локальные нейросети]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[DeepSeek 0731]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+	
+	<item>
+		<title><![CDATA[Xiaomi разогнали 1T-модель до 1200 tok/s на стандартных GPU]]></title>
+    <guid isPermaLink="true">https://habr.com/ru/news/1045594/</guid>
+		<link>https://habr.com/ru/news/1045594/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1045594</link>
+		<description><![CDATA[<p>Китайские команды MiMo и TileRT <a href="https://mimo.xiaomi.com/blog/mimo-tilert-1000tps" rel="noopener noreferrer nofollow">опубликовали</a> режим UltraSpeed для модели MiMo V2.5 Pro (1,02T параметров).</p><p>На одном 8-карточном сервере со стандартными GPU, до ~1200 токенов в секунду. <a href="https://www.cerebras.ai/blog/why-the-ai-race-shifted-to-speed" rel="noopener noreferrer nofollow">Cerebras</a> выдаёт похожие скорости на кастомном железе. Здесь обошлись без него.</p> <a href="https://habr.com/ru/articles/1045594/#habracut">Читать далее</a>]]></description>
+		
+		<pubDate>Tue, 09 Jun 2026 15:15:04 GMT</pubDate>
+    <dc:creator><![CDATA[python_leader]]></dc:creator>
+		<category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Будущее здесь]]></category><category><![CDATA[Программирование]]></category>
+		<category><![CDATA[Xiaomi]]></category><category><![CDATA[MiMo]]></category><category><![CDATA[inference]]></category><category><![CDATA[speculative decoding]]></category><category><![CDATA[квантизация]]></category><category><![CDATA[TileRT]]></category><category><![CDATA[AI-инфраструктура]]></category><category><![CDATA[LLM]]></category><category><![CDATA[GPU]]></category><category><![CDATA[токены в секунду]]></category>
+	</item>
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Контекст растёт, KV-кэш — нет: Qwen3.8-27B на ограниченной VRAM с CMF формате]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1080216/</guid>
+      <link>https://habr.com/ru/articles/1080216/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1080216</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/54c/fb7/a59/54cfb7a59e66f3ff799a4d7eeeedece2.png" /><p>Qwen3.8-27B в Q4TP занимает около 14,3 GB весов, но при длинном контексте упирается ещё и в KV-кэш. Для 16 full-attention слоёв этой гибридной модели FP16 KV-state растёт на 65 536 байт с каждым токеном: на 64K это около 4 ГиБ только для K/V.</p><p>В экспериментальном режиме O(1) рантайм CMF заменяет растущий KV-кэш этих 16 слоёв фиксированным состоянием: четыре sink-токена, точное окно последних 128 токенов и 32 опорных представлений для дальней части. В использованном профиле GPU-state attention составляет 44,1 МиБ, и не увеличивается с длиной контекста.</p> <a href="https://habr.com/ru/articles/1080216/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1080216#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Wed, 09 Sep 2026 09:34:27 GMT</pubDate>
+      <dc:creator><![CDATA[infosave]]></dc:creator>
+      <category><![CDATA[Rust]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Серверная оптимизация]]></category>
+      <category><![CDATA[llm]]></category><category><![CDATA[qwen3.8]]></category><category><![CDATA[kv-cache]]></category><category><![CDATA[kv-кэш]]></category><category><![CDATA[оптимизация]]></category><category><![CDATA[оптимизация кода]]></category><category><![CDATA[cmf]]></category><category><![CDATA[cmf формат]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[vLLM Production Stack. Часть 1: Базовые возможности vLLM]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1016062/</guid>
+      <link>https://habr.com/ru/articles/1016062/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1016062</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/b07/4d8/c47/b074d8c479ddc28dc16ef0c1a488bdbd.png" /><p>Статья будет о том, как быстро начать работать с vLLM и vLLM Production Stack: от первого запуска модели до базовых режимов инференса через OpenAI-совместимый API. Разберем практические настройки и сценарии запуска — tool calling, thinking/non-thinking, мультимодальные и CPU-модели, а так же какие стартовые параметры сильнее всего влияют на память, производительность и стабильность. Отдельном рассмотрим полезные оптимизации для production-сценариев: FP8, Tensor Parallelism, KV-cache offloading, Speculative Decoding и ускорение холодного старта больших моделей.</p> <a href="https://habr.com/ru/articles/1016062/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1016062#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Fri, 27 Mar 2026 16:09:16 GMT</pubDate>
+      <dc:creator><![CDATA[Bambarambambum]]></dc:creator>
+      <category><![CDATA[DevOps]]></category><category><![CDATA[Системное администрирование]]></category><category><![CDATA[Видеокарты]]></category><category><![CDATA[Kubernetes]]></category>
+      <category><![CDATA[vLLM]]></category><category><![CDATA[vllm production stack]]></category><category><![CDATA[kubernetes]]></category><category><![CDATA[llm]]></category><category><![CDATA[vllm-production-stack]]></category><category><![CDATA[kv-кэш]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Нейронные сети нетрадиционного ускорения]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1073504/</guid>
+      <link>https://habr.com/ru/articles/1073504/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1073504</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/8a6/21d/587/8a621d587cccab815b30c6fd722dfd62.jpg" /><p>В последнее время все помешались на ускорении генерации токенов локальных моделей. В погоне за скоростью люди бездумно квантуют KV-кэш до предела, обрезают контекст до уровня памяти рыбки-гуппи, а затем идут в комментарии жаловаться, что модель вдруг отупела и забывает половину диалога. Такой подход похож на быстрый бег по тёмной улице без уличного освещения. Можно бежать реально быстро, но только до первого столба.</p><p>Пора это исправлять. Данная статья знакомит читателя с современными методами спекулятивного декодирования, ускоряющими скорость генерации без всякой лоботомии.</p> <a href="https://habr.com/ru/articles/1073504/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1073504#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Sun, 23 Aug 2026 16:53:19 GMT</pubDate>
+      <dc:creator><![CDATA[ToxaBes]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Искусственный интеллект]]></category>
+      <category><![CDATA[спекулятивное декодирование]]></category><category><![CDATA[ускорение]]></category><category><![CDATA[модели]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[DGX Spark на 256K контексте: тестирую конфигурации vLLM, реальные замеры и почему NVFP4 в mainline сломан]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1033342/</guid>
+      <link>https://habr.com/ru/articles/1033342/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1033342</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/ca6/172/c4d/ca6172c4d1c98f51e8f799236cf3daf2.png" /><p>NVIDIA продаёт спарку с&nbsp;лозунгом «один петафлоп на&nbsp;FP4». Я купил коробку, поставил vLLM, запустил инференс и получил <strong>40&nbsp;токенов в&nbsp;секунду</strong> на 35B MoE‑модели. После маркетинговых слайдов цифра выглядит грустно.</p><p>Объяснение простое. NVFP4&nbsp;в&nbsp;основной ветке vLLM и FlashInfer <strong>физически сломан</strong> на&nbsp;SM_121&nbsp;— варианте Blackwell, который установлен в&nbsp;GB10. Ядра собраны под <code>compute_120f</code>, а&nbsp;нативные NVFP4-инструкции есть только в <code>compute_120a</code> и <code>compute_121a</code>. На&nbsp;SM_121&nbsp;распаковка квантованных весов идёт через программные битовые манипуляции в&nbsp;шейдере, без&nbsp;участия тензорных ядер.</p><p>Сообщество вытащило стек руками: нашло обходные пути, собрало рабочие конфигурации. Я прогнал на&nbsp;своём Spark <strong>шесть разных конфигураций vLLM</strong>&nbsp;— от&nbsp;стокового BF16&nbsp;до&nbsp;форка с&nbsp;DFlash speculative decoding&nbsp;— и замерил каждую одинаковым тестом. В&nbsp;этой статье разбираю, что&nbsp;в&nbsp;итоге работает и что&nbsp;выбирать под&nbsp;разные задачи. </p> <a href="https://habr.com/ru/articles/1033342/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1033342#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Sat, 09 May 2026 14:47:05 GMT</pubDate>
+      <dc:creator><![CDATA[AGmind]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Open source]]></category><category><![CDATA[IT-инфраструктура]]></category>
+      <category><![CDATA[vllm]]></category><category><![CDATA[dgx spark]]></category><category><![CDATA[gb10]]></category><category><![CDATA[blackwell]]></category><category><![CDATA[nvfp4]]></category><category><![CDATA[llm]]></category><category><![CDATA[инференс]]></category><category><![CDATA[локальный ии]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Топ вопросов с NLP собеседований: архитектуры LLM, инференс и оптимизация]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1068944/</guid>
+      <link>https://habr.com/ru/articles/1068944/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1068944</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/739/f4d/844/739f4d844338eaa0055e1bd36e95f416.jpg" /><p>На NLP/LLM собеседованиях все чаще проверяют не только знание трансформеров, но и понимание того, как устроены современные GPT-like модели: почему большинство генеративных LLM используют decoder-only архитектуру, чем LLaMA отличается от ванильного Transformer, зачем нужны RoPE, RMSNorm, SwiGLU и GQA.</p><p>Почему инференс LLM дорогой и какие оптимизации помогают его ускорять: fused kernels, FlashAttention, KV-cache и PagedAttention, continuous batching, speculative decoding, квантизация и дистилляция. </p><p>Много схем и картинок, а также полный список вопросов с собесов в конце.</p> <a href="https://habr.com/ru/articles/1068944/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1068944#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Mon, 10 Aug 2026 19:15:53 GMT</pubDate>
+      <dc:creator><![CDATA[abletobetable]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Natural Language Processing]]></category><category><![CDATA[Искусственный интеллект]]></category>
+      <category><![CDATA[LLM]]></category><category><![CDATA[архитектура LLM]]></category><category><![CDATA[инференс LLM]]></category><category><![CDATA[ускорение LLM]]></category><category><![CDATA[оптимизация LLM]]></category><category><![CDATA[Transformer]]></category><category><![CDATA[FlashAttention]]></category><category><![CDATA[KV-cache]]></category><category><![CDATA[квантизация LLM]]></category><category><![CDATA[Mixture of Experts]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+	
+	<item>
+		<title><![CDATA[Вышла флагманская open-source модель GLM 5.2. Уже доступна в KodaCode]]></title>
+    <guid isPermaLink="true">https://habr.com/ru/companies/koda/news/1048518/</guid>
+		<link>https://habr.com/ru/companies/koda/news/1048518/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1048518</link>
+		<description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/7f3/4f6/e77/7f34f6e7770927ab5fa4844e963398b2.png" /><p>Компания <a href="http://Z.ai">Z.ai</a> представила GLM 5.2 — новую флагманскую модель семейства GLM, ориентированную на long-horizon задачи: системную разработку, большие кодовые базы, сложный дебаг, оптимизацию производительности и длительные агентные сценарии.</p><p>Главное изменение относительно GLM 5.1 — стабильный контекст на 1M токенов. В релизе <a href="http://Z.ai">Z.ai</a> отдельно подчёркивает, что речь не просто о возможности принять длинный prompt, а о сохранении качества на длинных инженерных траекториях: когда агент много шагов работает с кодом, инструментами, промежуточными результатами и не должен терять структуру задачи.</p> <a href="https://habr.com/ru/articles/1048518/#habracut">Читать далее</a>]]></description>
+		
+		<pubDate>Wed, 17 Jun 2026 12:06:06 GMT</pubDate>
+    <dc:creator><![CDATA[Dmitry_zm (Koda)]]></dc:creator>
+		<category><![CDATA[Блог компании Koda]]></category><category><![CDATA[Программирование]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category>
+		<category><![CDATA[GLM 5.2]]></category><category><![CDATA[kodacode]]></category><category><![CDATA[ai]]></category><category><![CDATA[machine learning]]></category><category><![CDATA[llm]]></category><category><![CDATA[вайб-кодинг]]></category><category><![CDATA[vibecoding]]></category><category><![CDATA[ai-инструменты]]></category>
+	</item>
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Алгоритмы спекулятивного инференса LLM]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/871704/</guid>
+      <link>https://habr.com/ru/articles/871704/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=871704</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/347/864/29a/34786429ac7e37c2a850c7f9f6d99532.jpg" /><p>За последние годы качество LLM моделей сильно выросло, методы квантизации стали лучше, а видеокарты мощнее. Тем не менее качество генерации все еще напрямую зависит от размера весов и, как следствие, вычислительной сложности. <br>Кроме того, генерация текста авторегрессионна - токен за токеном по одному, потому ее сложность зависит от размера контекста и количества генерируемых токенов.</p><p>Но генерация текста не&nbsp;всегда имеет однородную сложность, так&nbsp;же как&nbsp;мы во&nbsp;многом мыслим идеями, а&nbsp;слова произносим «на автомате». В&nbsp;статье обсудим алгоритмы, позволяющие использовать эту неоднородность для&nbsp;ускорения.</p><p></p> <a href="https://habr.com/ru/articles/871704/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=871704#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Sun, 05 Jan 2025 09:25:38 GMT</pubDate>
+      <dc:creator><![CDATA[svtDanny]]></dc:creator>
+      <category><![CDATA[Машинное обучение]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Алгоритмы]]></category><category><![CDATA[Высоконагруженные системы]]></category><category><![CDATA[Open source]]></category>
+      <category><![CDATA[инференс]]></category><category><![CDATA[спекулятивный декодинг]]></category><category><![CDATA[llm]]></category><category><![CDATA[оптимизация инференса]]></category><category><![CDATA[алгоритмическая оптимизация]]></category><category><![CDATA[ml]]></category><category><![CDATA[DL]]></category><category><![CDATA[ML алгоритмы]]></category><category><![CDATA[DL инференс]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Тест DeepSeek, Qwen, GLM и прочих LLM на продвинутом пользовательском железе]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/1080316/</guid>
+      <link>https://habr.com/ru/articles/1080316/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1080316</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/977/19f/866/97719f86694f910a27ba0a361d39ccaa.jpg" /><p>В&nbsp;статье рассказываю о&nbsp;личном опыте запуска современных LLM на&nbsp;домашнем ПК, сравниваю модели, кванты и движки, показываю результаты практических тестов и делюсь выводами о&nbsp;том, что&nbsp;сегодня по&nbsp;моему мнению имеет смысл запускать локально.</p> <a href="https://habr.com/ru/articles/1080316/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=1080316#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Wed, 09 Sep 2026 11:59:05 GMT</pubDate>
+      <dc:creator><![CDATA[ZloyFrag]]></dc:creator>
+      <category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Видеокарты]]></category><category><![CDATA[Компьютерное железо]]></category>
+      <category><![CDATA[MTP]]></category><category><![CDATA[DSpark]]></category><category><![CDATA[NInfer]]></category><category><![CDATA[FreeToken]]></category><category><![CDATA[ExLlamaV3]]></category><category><![CDATA[Qwen]]></category><category><![CDATA[DeepSeek]]></category><category><![CDATA[GLM]]></category><category><![CDATA[Ornith]]></category><category><![CDATA[RTX 5090]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+	
+  
+
+  
+    <item>
+      <title><![CDATA[[Перевод] Внутри vLLM: Анатомия системы инференса LLM с высокой пропускной способностью]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/articles/957748/</guid>
+      <link>https://habr.com/ru/articles/957748/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=957748</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/59c/c18/b9d/59cc18b9dcb7ad56f3174ff2bc0ba973.png" /><p>Привет! Этот пост — перевод очень хардовой статьи про внутренности vLLM и того, как устроен инференс LLM. Переводить было сложно из-за англицизмов и отсутствия устоявшегося перевода многих терминов, но это слишком классная статья, и она обязана быть на русском языке! А дальше — слово автору:</p><p>От paged attention, непрерывного батчинга, кэширования префиксов , specdec и т.д. — до мульти-GPU и мультинодового динамического сервинга LLM под нагрузкой.</p><p>В этом посте я постепенно представлю все основные системные компоненты и продвинутые функции, которые составляют современную систему инференса LLM с высокой пропускной способностью. И детально разберу, как внутри работает vLLM.</p> <a href="https://habr.com/ru/articles/957748/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=957748#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Sat, 18 Oct 2025 19:53:59 GMT</pubDate>
+      <dc:creator><![CDATA[antipov_dmitry]]></dc:creator>
+      <category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Big Data]]></category><category><![CDATA[Анализ и проектирование систем]]></category>
+      <category>vllm</category><category>llm</category><category>инференс ллм</category><category>llm inference</category>
+    </item>
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Ускорение инференса LLM]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/companies/yandex/articles/801119/</guid>
+      <link>https://habr.com/ru/companies/yandex/articles/801119/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=801119</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/29f/813/2b0/29f8132b085b69c7433bb7d7380aa9f2.png" /><p>Инференсом ML-модели называют процесс её работы на конечном устройстве. Соответственно, чем больше мы разгоняем инференс, тем быстрее работает модель. Скорость может зависеть от разных условий, например, от архитектуры, которую вы выбрали для модели, или от железа, на котором работает устройство. Кроме того, проблема тяжёлого инференса остро ощущается на больших языковых моделях (LLM) так остро, как ни на каких других моделях.</p><p>Меня зовут Роман Горб, я старший ML-разработчик в команде YandexGPT. Тема инференса LLM заинтересовала меня, потому что я занимался R&amp;D в квантовании сеток для CV-задач. Сегодня я расскажу, как безболезненно увеличить скорость инференса. Сперва разберёмся, зачем это нужно, а потом рассмотрим разные методы ускорения и фреймворки, которые могут в этом помочь.</p> <a href="https://habr.com/ru/articles/801119/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=801119#habracut">Ускоряемся</a>]]></description>
+      
+      <pubDate>Tue, 02 Apr 2024 07:01:29 GMT</pubDate>
+      <dc:creator><![CDATA[roman-gorb (Яндекс)]]></dc:creator>
+      <category><![CDATA[Блог компании Яндекс]]></category><category><![CDATA[Программирование]]></category><category><![CDATA[Алгоритмы]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Искусственный интеллект]]></category>
+      <category><![CDATA[яндекс]]></category><category><![CDATA[machine learning]]></category><category><![CDATA[llm]]></category><category><![CDATA[ml]]></category><category><![CDATA[нейросети]]></category><category><![CDATA[инференс]]></category><category><![CDATA[gpt]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+    <item>
+      <title><![CDATA[Ускорение LLM: универсальные методы для популярных архитектур]]></title>
+      <guid isPermaLink="true">https://habr.com/ru/companies/yandex/articles/878230/</guid>
+      <link>https://habr.com/ru/companies/yandex/articles/878230/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=878230</link>
+      <description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/1e5/c41/92f/1e5c4192febb498ffb30ed63aee66e3b.png" /><p>ML‑модели применяются в&nbsp;сервисах Яндекса уже много лет, мы накопили большой опыт в&nbsp;их обучении. Статьи об&nbsp;этом коллеги регулярно публикуют, в&nbsp;том числе на&nbsp;Хабре. Но&nbsp;сегодня хочу обсудить другую не&nbsp;менее важную задачу&nbsp;— ускорение инференса (процесса работы на&nbsp;конечном устройстве) моделей. Скорость зависит от&nbsp;разных условий, главным образом от&nbsp;архитектуры и&nbsp;железа, но&nbsp;есть множество интересных способов повлиять на&nbsp;неё. Особенно актуальна проблема тяжёлого инференса при&nbsp;использовании больших языковых моделей (LLM)&nbsp;— на&nbsp;то они и large!</p><p>Для&nbsp;команды YandexGPT, в&nbsp;которой я и тружусь вместе со своими коллегами, тема инференса LLM находится в&nbsp;разряде вечных вопросов. С&nbsp;предыдущей статьи прошёл уже почти год, опыта у&nbsp;нас стало больше&nbsp;— получилось протестировать новые подходы, которыми и хочется поделиться сегодня.</p> <a href="https://habr.com/ru/articles/878230/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=878230#habracut">Читать далее</a>]]></description>
+      
+      <pubDate>Wed, 05 Feb 2025 07:00:29 GMT</pubDate>
+      <dc:creator><![CDATA[roman-gorb (Яндекс)]]></dc:creator>
+      <category><![CDATA[Блог компании Яндекс]]></category><category><![CDATA[Машинное обучение]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Алгоритмы]]></category><category><![CDATA[Программирование]]></category>
+      <category><![CDATA[инференс]]></category><category><![CDATA[ml]]></category><category><![CDATA[нейросети]]></category><category><![CDATA[llm]]></category>
+    </item>
+  
+
+  
+
+  
+
+	
+  
+
+  
+
+  
+
+    
+
+  
+
+  
+
+	
+	<item>
+		<title><![CDATA[Nvidia расширяет возможности ИИ с помощью «гигамасштабной» технологии Spectrum-XGS]]></title>
+    <guid isPermaLink="true">https://habr.com/ru/companies/bothub/news/940014/</guid>
+		<link>https://habr.com/ru/companies/bothub/news/940014/?utm_source=habrahabr&amp;utm_medium=rss&amp;utm_campaign=940014</link>
+		<description><![CDATA[<img src="https://habrastorage.org/getpro/habr/upload_files/8a4/604/4eb/8a46044ebe2a732eb180a5001b6a8dbc.jpg" /><p>Технологический гигант анонсировал <strong>Spectrum‑XGS</strong>, «гигамасштабное» расширение для&nbsp;своей платформы Spectrum‑X&nbsp;— Ethernet‑коммутаторов, созданных специально под&nbsp;нагрузки ИИ. Если Spectrum‑X соединяет внутри дата‑центра целые кластеры, обеспечивая потоковую передачу огромных массивов данных между моделями, то Spectrum‑XGS идёт дальше: он объединяет и координирует работу <em>нескольких</em> дата‑центров.</p> <a href="https://habr.com/ru/articles/940014/#habracut">Читать далее</a>]]></description>
+		
+		<pubDate>Sat, 23 Aug 2025 09:18:50 GMT</pubDate>
+    <dc:creator><![CDATA[dmitrifriend (BotHub)]]></dc:creator>
+		<category><![CDATA[Блог компании BotHub]]></category><category><![CDATA[IT-инфраструктура]]></category><category><![CDATA[IT-компании]]></category><category><![CDATA[Искусственный интеллект]]></category><category><![CDATA[Компьютерное железо]]></category>
+		<category><![CDATA[nvidia]]></category><category><![CDATA[spectrum xgs]]></category><category><![CDATA[ethernet]]></category><category><![CDATA[nvlink fusion]]></category><category><![CDATA[dynamo]]></category>
+	</item>
+	
+  
+
+  
+
+  
+
+      
+
+      
+
+      
+
+    
+  </channel>
+</rss>

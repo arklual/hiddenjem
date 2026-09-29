@@ -1,0 +1,21 @@
+{
+  "name": "horizon-e2e",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "End-to-end tests running against the real Horizon stack (no mocks).",
+  "scripts": {
+    "test": "playwright test",
+    "test:ui": "playwright test --ui",
+    "test:api": "playwright test --project=api",
+    "test:web": "playwright test --project=web",
+    "report": "playwright show-report",
+    "install:browsers": "playwright install --with-deps chromium"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.10.0",
+    "@playwright/test": "^1.48.0",
+    "@types/node": "^22.7.5",
+    "typescript": "^5.6.3"
+  }
+}

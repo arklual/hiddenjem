@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Shared logging configuration.
+
+  Structured JSON on stdout is the only supported production format: it is what makes logs
+  queryable and correlatable with traces. Services include this from their own logback-spring.xml:
+      <include resource="horizon-logback.xml"/>
+  A human-readable pattern is used when the `local` profile is active.
+-->
+<included>
+  <springProperty scope="context" name="serviceName" source="spring.application.name" defaultValue="horizon"/>
+
+  <springProfile name="local | test">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder>
+        <pattern>%d{HH:mm:ss.SSS} %-5level [%X{traceId:-},%X{spanId:-}] %logger{36} - %msg%n</pattern>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <springProfile name="!local &amp; !test">
+    <appender name="CONSOLE" class="ch.qos.logback.core.ConsoleAppender">
+      <encoder class="net.logstash.logback.encoder.LogstashEncoder">
+        <includeMdcKeyName>traceId</includeMdcKeyName>
+        <includeMdcKeyName>spanId</includeMdcKeyName>
+        <includeMdcKeyName>userId</includeMdcKeyName>
+        <includeMdcKeyName>requestId</includeMdcKeyName>
+        <customFields>{"service":"${serviceName}"}</customFields>
+        <fieldNames>
+          <timestamp>@timestamp</timestamp>
+          <version>[ignore]</version>
+          <levelValue>[ignore]</levelValue>
+        </fieldNames>
+      </encoder>
+    </appender>
+  </springProfile>
+
+  <root level="INFO">
+    <appender-ref ref="CONSOLE"/>
+  </root>
+  <logger name="dev.horizon" level="DEBUG"/>
+  <logger name="org.apache.kafka" level="WARN"/>
+  <logger name="org.hibernate.orm.deprecation" level="ERROR"/>
+</included>

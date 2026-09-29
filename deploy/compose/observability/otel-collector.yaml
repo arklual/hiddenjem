@@ -1,0 +1,120 @@
+# =============================================================================
+#  OpenTelemetry Collector — единая точка приёма телеметрии (NFR-O1)
+# =============================================================================
+#  Роль коллектора: сервисы не знают, куда в итоге едут трейсы. Они отправляют
+#  OTLP на один адрес, а маршрутизацию, обогащение и семплирование меняет
+#  эксплуатация — без пересборки образов.
+#
+#  Потоки:
+#      traces   : приложения --OTLP--> collector --> Tempo
+#      metrics  : приложения --OTLP--> collector --> :8889 (скрейпит Prometheus)
+#
+#  Метрики JVM/Spring снимаются Prometheus напрямую с /actuator/prometheus:
+#  pull-модель проще в отладке и не теряет данные при рестарте коллектора.
+#  Через OTLP сюда приходят только те метрики, которые сервис не умеет отдавать
+#  скрейпом (в первую очередь — из Python-воркера).
+# =============================================================================
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+        # 4 МиБ: одиночный батч трейсов саги с большими атрибутами не должен
+        # отбиваться по размеру.
+        max_recv_msg_size_mib: 4
+      http:
+        endpoint: 0.0.0.0:4318
+
+processors:
+  # ПОРЯДОК ПРОЦЕССОРОВ ЗНАЧИМ. memory_limiter обязан быть первым: иначе
+  # коллектор успевает разобрать и разложить по батчам данные, которые ему
+  # уже некуда девать, и падает по OOM вместо того, чтобы отбить приём.
+  memory_limiter:
+    check_interval: 1s
+    # Согласовано с лимитом контейнера 256 МиБ: мягкий порог ~70%,
+    # spike — запас на всплеск между проверками.
+    limit_mib: 180
+    spike_limit_mib: 40
+
+  resource:
+    attributes:
+      - key: deployment.environment
+        value: local
+        # upsert, а не insert: значение из окружения сервиса приоритетнее не
+        # бывает — среду знает тот, кто разворачивает, а не тот, кто пишет код.
+        action: upsert
+      - key: service.namespace
+        value: horizon
+        action: insert
+      # Внутренние адреса подов/контейнеров в бэкенде трассировки бесполезны,
+      # а в связке с логами дают лишнюю PII-подобную привязку (NFR-S11).
+      - key: net.host.name
+        action: delete
+
+  batch:
+    # 5 с — компромисс: заметно снижает число RPC к Tempo, но не делает
+    # трейс «запаздывающим» настолько, чтобы мешать отладке.
+    timeout: 5s
+    send_batch_size: 512
+    send_batch_max_size: 1024
+
+exporters:
+  otlp/tempo:
+    endpoint: tempo:4317
+    tls:
+      # Внутри docker-сети TLS нет. В Kubernetes включается mTLS сервис-меша
+      # (NFR-S1) и этот блок заменяется на реальные сертификаты.
+      insecure: true
+    retry_on_failure:
+      enabled: true
+      initial_interval: 1s
+      max_interval: 30s
+      max_elapsed_time: 120s
+    sending_queue:
+      enabled: true
+      num_consumers: 4
+      queue_size: 512
+
+  prometheus:
+    endpoint: 0.0.0.0:8889
+    # Ресурсные атрибуты (service.name, service.role) становятся метками метрик —
+    # без этого нельзя отличить analytics api от worker на дашборде.
+    resource_to_telemetry_conversion:
+      enabled: true
+    enable_open_metrics: true
+
+  # Диагностический вывод в лог коллектора. verbosity: basic печатает только
+  # счётчики принятого; detailed включают руками, когда «трейсы не доходят».
+  debug:
+    verbosity: basic
+    sampling_initial: 5
+    sampling_thereafter: 200
+
+extensions:
+  health_check:
+    endpoint: 0.0.0.0:13133
+  # zpages — живая интроспекция пайплайнов на :55679/debug/tracez.
+  # Дешёвый способ понять, где встали данные, без пересборки конфигурации.
+  zpages:
+    endpoint: 0.0.0.0:55679
+
+service:
+  extensions: [health_check, zpages]
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [otlp/tempo, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, resource, batch]
+      exporters: [prometheus, debug]
+  telemetry:
+    logs:
+      level: warn
+      encoding: json
+    metrics:
+      # Собственные метрики коллектора; Prometheus скрейпит их отдельным job.
+      address: 0.0.0.0:8888
+      level: normal

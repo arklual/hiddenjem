@@ -1,0 +1,187 @@
+{
+ "status": "ok",
+ "model": "gpt-5.6-luna",
+ "documents": [
+  {
+   "url": "https://github.com/wasmerio/edgejs",
+   "title": "wasmerio/edgejs",
+   "publishedOn": "2026-03-01",
+   "sourceClass": "CODE_REPOSITORY",
+   "origin": "github",
+   "via": "github-api",
+   "host": "github.com",
+   "language": "en",
+   "excerpt": "wasmerio/edgejs\n\nEdge.js is a secure JavaScript runtime, designed for Edge computing and AI workloads\n\n<p align=\"center\">\n  <picture>\n    <source media=\"(prefers-color-scheme: dark)\" srcset=\"./assets/edgejs-logo-white.svg\">\n    <source media=\"(prefers-color-scheme: light)\" srcset=\"./assets/edgejs-logo-dark.svg\">\n    <img src=\"./assets/edgejs-logo-dark.svg\" alt=\"Edge.js logo\" height=\"100\">\n  </picture>\n</p>\n\n<p align=\"center\">\n  Run JavaScript anywhere. <b>Safely</b>.\n</p>\n\n<hr />\n\nEdge.js is a secure **JavaScript** runtime, designed for Edge computing and AI workloads.\n\nEdge.js **uses WebAssembly** for sandboxing when in `--safe` mode, so even the most insecure programs can run on it safely. Edge also is:\n\n* ✅ Fully **compatible with Node.js**.\n* 🔒 **Sandboxed** by design.\n* 🧩 Pluggable with any **JS engine**: V8, JavaScriptCore or QuickJS.\n* 💪 Compatible with **any package manager**: NPM/PNPM/Yarn/Bun.\n\n## Install Edge.js\n\n```bash\ncurl -fsSL https://edgejs.org/install | bash\n```\n\n## Use it!\n\nYou can use it as you would do it with Node.js:\n\n```js\nconst http = require(\"node:http\");\n\nhttp\n  .createServer((_req, res) => {\n    res.end(\"hello from edge\\n\");\n  })\n  .listen(3000, () => {\n    console.log(\"listening on http://localhost:3000\");\n  });\n```\n\n```bash\n$ edge server.js\n```\n\nIf you want to use it in your current workflow, just wrap your commands with `edge`:\n\n```bash\n$ edge node myfile.js\n$ edge npm install\n$ edge pnpm run dev\n```\n\n## Development\n\nFirst, clone the repo and in",
+   "sha256": "ebb82a22837c89ccdb25219feff0b088477ba27af55dc694d81cac6790aa4378",
+   "fetchedAt": "2026-09-27T06:32:11+00:00",
+   "httpStatus": 200,
+   "authors": [
+    "wasmerio"
+   ],
+   "organization": "wasmerio",
+   "organizationIsCompany": true,
+   "doi": null,
+   "arxivId": null,
+   "venue": null,
+   "readReason": "Read repository for a new edge JavaScript runtime.",
+   "technologies": [
+    "secure edge JavaScript runtime"
+   ]
+  },
+  {
+   "url": "https://www.edgeir.com/stormagic-and-hiveradar-target-off-grid-compute-with-mobile-edge-data-centers-20260413",
+   "title": "StorMagic and HiveRadar target off-grid compute with mobile edge data centers | Edge Infrastructure Review",
+   "publishedOn": "2026-04-13",
+   "sourceClass": "NEWS",
+   "origin": "industry",
+   "via": "html",
+   "host": "edgeir.com",
+   "language": "en",
+   "excerpt": "Share\nX/Tweet\nLink\nComment\nStorMagic and HiveRadar target off-grid compute with mobile edge data centers\nApr 13, 2026 | Stephen Mayhew\nCategories\nDigital Infrastructure News | Technology & Architecture\nStorMagic and HiveRadar have partnered to deliver a mobile edge computing solution combining StorMagic’s SvHCI software and HiveRadar’s Portable Edge Data Center (P-EDC).\nIt is a solution purpose-built for secure, robust and high-performance IT infrastructure in remote, mobile and off-grid environments.\n“Whether operating in disaster recovery zones, forward-operating environments, mobile command centers, remote film sets or distributed retail sites, our customers can now deploy a secure, high-performance virtualized environment in minutes,” says Rahul Narsimhan, CEO, HiveRadar. “Together, StorMagic and HiveRadar customers will benefit from rapid deployment and travel-ready mobility, which is especially beneficial for defense, emergency response, energy, retail, entertainment and industrial operations users.”\nKey features include data-at-rest encryption, VM import for workload migration, caching for performance, real-time health monitoring, and low-latency field compute and storage.\nW",
+   "sha256": "fd031f1e1068b76c9bd5f18dbd4c0e0fea5c18c92eeed8ecd6239cf8740b6e07",
+   "fetchedAt": "2026-09-27T06:32:15+00:00",
+   "httpStatus": 200,
+   "authors": [
+    "Stephen Mayhew"
+   ],
+   "organization": "edgeir.com",
+   "organizationIsCompany": true,
+   "doi": null,
+   "arxivId": null,
+   "venue": "edgeir.com",
+   "readReason": "Read industry report on mobile/off-grid edge data centers.",
+   "technologies": [
+    "portable edge data centers"
+   ]
+  },
+  {
+   "url": "https://arxiv.org/abs/2405.21009",
+   "title": "FunLess: Functions-as-a-Service for Private Edge Cloud Systems",
+   "publishedOn": "2024-05-31",
+   "sourceClass": "PREPRINT",
+   "origin": "arxiv",
+   "via": "arxiv-api",
+   "host": "arxiv.org",
+   "language": "en",
+   "excerpt": "FunLess: Functions-as-a-Service for Private Edge Cloud Systems\n\nWe present FunLess, a Function-as-a-Service (FaaS) platform tailored for the private edge cloud system. FunLess responds to recent trends that advocate for extending the coverage of serverless computing to private edge cloud systems and enhancing latency, security, and privacy while improving resource usage. Unlike existing solutions that rely on containers for function invocation, FunLess leverages WebAssembly (Wasm) as its runtime environment. Wasm's lightweight, sandboxed runtime is crucial to have functions run on constrained devices at the edge. Moreover, the advantages of using Wasm in FunLess include a consistent development and deployment environment for users and function portability (write once, run everywhere) We validate FunLess under different deployment scenarios, characterised by the presence/absence of constrained-resource devices (Raspberry Pi 3B+) and the (in)accessibility of container orchestration technologies - Kubernetes. We compare FunLess with three production-ready, widely adopted open-source FaaS platforms - OpenFaaS, Fission, and Knative. Our benchmarks confirm that FunLess is a proper solution for FaaS private edge cloud systems since it achieves performance comparable to the considered FaaS alternatives while it is the only fully-deployable alternative on constrained-resource devices, thanks to its small memory footprint.",
+   "sha256": "9771fe319e1e7b6f51bc4396822a16e875feb923300cb68c29c7002c035c0e9a",
+   "fetchedAt": "2026-09-27T06:32:37+00:00",
+   "httpStatus": 200,
+   "authors": [
+    "Giuseppe De Palma",
+    "Saverio Giallorenzo",
+    "Jacopo Mauro",
+    "Matteo Trentin",
+    "Gianluigi Zavattaro"
+   ],
+   "organization": null,
+   "organizationIsCompany": false,
+   "doi": null,
+   "arxivId": "2405.21009",
+   "venue": null,
+   "readReason": "Read primary source on private edge serverless platform.",
+   "technologies": [
+    "WebAssembly edge FaaS"
+   ]
+  }
+ ],
+ "technologies": [
+  {
+   "name": "WebAssembly edge FaaS",
+   "urls": [
+    "https://arxiv.org/abs/2405.21009"
+   ],
+   "why": "Early-stage 2024 platform uses WebAssembly instead of containers for portable, sandboxed functions on constrained edge devices.",
+   "quote": "FunLess, a Function-as-a-Service (FaaS) platform tailored for the private edge cloud system",
+   "emitted": true
+  },
+  {
+   "name": "secure edge JavaScript runtime",
+   "urls": [
+    "https://github.com/wasmerio/edgejs"
+   ],
+   "why": "2026 repository presents a new runtime explicitly designed for edge and AI workloads.",
+   "quote": "Edge.js is a secure JavaScript runtime, designed for Edge computing and AI workloads",
+   "emitted": true
+  },
+  {
+   "name": "portable edge data centers",
+   "urls": [
+    "https://www.edgeir.com/stormagic-and-hiveradar-target-off-grid-compute-with-mobile-edge-data-centers-20260413"
+   ],
+   "why": "2025-2026 reports show early deployments and partnerships around rugged, mobile/off-grid edge infrastructure.",
+   "quote": "mobile edge computing solution combining StorMagic’s SvHCI software and HiveRadar’s Portable Edge Data Center (P-EDC)",
+   "emitted": true
+  }
+ ],
+ "stats": {
+  "model": "gpt-5.6-luna",
+  "iterations": 7,
+  "searches": 10,
+  "searchesOk": 9,
+  "searchesEmpty": 0,
+  "searchesFailed": 1,
+  "searchesBySource": {
+   "arxiv": {
+    "ok": 4
+   },
+   "github": {
+    "ok": 2
+   },
+   "industry": {
+    "ok": 2
+   },
+   "semanticscholar": {
+    "failed": 1
+   },
+   "hackernews": {
+    "ok": 1
+   }
+  },
+  "pagesFetched": 15,
+  "pagesRefused": 0,
+  "pagesFailed": 0,
+  "pagesSkipped": 0,
+  "failedFetchShare": 0.0,
+  "fetchProblems": {},
+  "documentsEmitted": 13,
+  "documentsDropped": {},
+  "namesRecorded": 13,
+  "namesRejected": 1,
+  "namesWithDocuments": 13,
+  "promptTokens": 58256,
+  "completionTokens": 2372,
+  "wallSeconds": 118.7,
+  "stopReason": "model_finished"
+ },
+ "trace": [
+  {
+   "tool": "fetch",
+   "url": "https://github.com/wasmerio/edgejs",
+   "reason": "Read repository for a new edge JavaScript runtime.",
+   "outcome": "ok",
+   "via": "github-api",
+   "characters": 3820,
+   "sha256": "ebb82a22837c89ccdb25219feff0b088477ba27af55dc694d81cac6790aa4378"
+  },
+  {
+   "tool": "fetch",
+   "url": "https://www.edgeir.com/stormagic-and-hiveradar-target-off-grid-compute-with-mobile-edge-data-centers-20260413",
+   "reason": "Read industry report on mobile/off-grid edge data centers.",
+   "outcome": "ok",
+   "via": "html",
+   "characters": 4017,
+   "sha256": "fd031f1e1068b76c9bd5f18dbd4c0e0fea5c18c92eeed8ecd6239cf8740b6e07"
+  },
+  {
+   "tool": "fetch",
+   "url": "https://arxiv.org/abs/2405.21009",
+   "reason": "Read primary source on private edge serverless platform.",
+   "outcome": "ok",
+   "via": "arxiv-api",
+   "characters": 1436,
+   "sha256": "9771fe319e1e7b6f51bc4396822a16e875feb923300cb68c29c7002c035c0e9a"
+  }
+ ],
+ "report": "(summary of the model: not evidence)"
+}

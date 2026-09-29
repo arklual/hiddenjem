@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>The Register — AI</title>
+  <link href="https://theregister.example/ai" rel="alternate"/>
+  <id>tag:theregister.example,2005:/ai</id>
+  <updated>2026-03-01T10:00:00Z</updated>
+
+  <entry>
+    <title>Speculative decoding lands in mainstream serving stacks</title>
+    <link href="https://theregister.example/ai/speculative-decoding-serving" rel="alternate"/>
+    <id>tag:theregister.example,2024:ai/speculative-decoding-serving</id>
+    <published>2024-03-05T09:00:00Z</published>
+    <updated>2026-01-20T12:00:00Z</updated>
+    <author><name>Ivan Sokolov</name></author>
+    <category term="machine-learning"/>
+    <content type="html">&lt;p&gt;The technique moved from research code into two of the three major serving runtimes.&lt;/p&gt;</content>
+  </entry>
+
+  <entry>
+    <title>Draft models get smaller, speculative decoding gets cheaper</title>
+    <link href="https://theregister.example/ai/smaller-draft-models" rel="alternate"/>
+    <id>tag:theregister.example,2024:ai/smaller-draft-models</id>
+    <updated>2024-06-11T08:30:00Z</updated>
+    <summary>Distilled drafters cut memory overhead without losing acceptance rate.</summary>
+  </entry>
+
+  <entry>
+    <title>An early look at speculative decoding research</title>
+    <link href="https://theregister.example/ai/early-speculative-decoding" rel="alternate"/>
+    <id>tag:theregister.example,2019:ai/early-speculative-decoding</id>
+    <published>2019-05-02T07:15:00Z</published>
+    <updated>2019-05-02T07:15:00Z</updated>
+    <summary>A conference talk sketches the draft-and-verify idea.</summary>
+  </entry>
+</feed>

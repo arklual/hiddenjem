@@ -1,0 +1,353 @@
+server:
+  port: ${SERVER_PORT:8083}
+  shutdown: graceful
+
+spring:
+  application:
+    name: ingestion-service
+  lifecycle:
+    timeout-per-shutdown-phase: 30s
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/horizon}
+    username: ${DB_USERNAME:ingestion_app}
+    password: ${DB_PASSWORD:ingestion_app}
+    hikari:
+      maximum-pool-size: ${DB_POOL_SIZE:10}
+      minimum-idle: 2
+      connection-timeout: 5000
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+    properties:
+      hibernate:
+        default_schema: ingestion
+        jdbc:
+          batch_size: 100
+        order_inserts: true
+  flyway:
+    enabled: true
+    schemas: ingestion
+    default-schema: ingestion
+    baseline-on-migrate: true
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      timeout: 2s
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:19092}
+    consumer:
+      group-id: ingestion-service
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      max-poll-records: 1
+      properties:
+        # One collection can take minutes; the default 5-minute poll interval would make the broker
+        # believe the consumer died and rebalance in the middle of a run. 35 minutes — above the
+        # 30-minute saga deadline: at 15 minutes a 15.1-minute collection on the stand lost its
+        # group membership, and the command went to redelivery (analysis 104).
+        # Must stay above the longest collection — the quality mode: deep research gets
+        # horizon.deep-research.quality.time-budget (PT20M30S) plus a minute for the answer, i.e.
+        # about 21-22 minutes. Raising the quality budget means raising this too.
+        max.poll.interval.ms: 2100000
+    listener:
+      ack-mode: record
+      missing-topics-fatal: false
+
+horizon:
+  # Расширение запроса перед сбором: генеративная модель сервиса моделей предлагает узкие
+  # формулировки подтем направления — центр, новые подходы, края, — и каждая уходит в источники
+  # отдельным запросом. Модель только предлагает, что спросить; находят источники. Выключено по
+  # умолчанию и без адреса сервиса моделей не включается.
+  query-expansion:
+    enabled: ${HORIZON_QUERY_EXPANSION_ENABLED:false}
+    nlp-url: ${HORIZON_NLP_URL:}
+    max-queries: ${HORIZON_QUERY_EXPANSION_MAX_QUERIES:12}
+    budget-share: ${HORIZON_QUERY_EXPANSION_BUDGET_SHARE:0.4}
+    reserve-documents: ${HORIZON_QUERY_EXPANSION_RESERVE_DOCUMENTS:0}
+    per-query-documents: ${HORIZON_QUERY_EXPANSION_PER_QUERY_DOCUMENTS:40}
+    timeout: PT90S
+    time-budget: ${HORIZON_QUERY_EXPANSION_TIME_BUDGET:PT6M}
+    # Языки узких запросов: английский всегда, русский и китайский — по списку.
+    languages: ${HORIZON_QUERY_EXPANSION_LANGUAGES:en}
+    # Кого спрашивать не по-английски. arXiv, Semantic Scholar, Europe PMC и Hacker News отвечают
+    # нулём; Crossref ищет мешком слов и иероглифов и приносит шум (доклады ООН на китайские запросы
+    # про edge computing). OpenAlex ищет по заголовку и аннотации терминами в кавычках — разбор 93.
+    source-languages:
+      # Хабр — единственный источник, для которого русская формулировка родная.
+      ru: openalex,habr
+      zh: openalex
+  # Глубокое исследование (разбор 102): агент сервиса моделей ищет по открытым каталогам и читает
+  # страницы целиком. Включается как источник — horizon.connectors.sources.deepresearch.enabled.
+  # Бюджет — по режиму анализа из команды сбора. Верхний уровень — быстрый режим (анализ за
+  # двадцать минут), quality — качественный (за сорок). Источники идут параллельно, и узкие
+  # запросы исследования не ждут, поэтому сбор длится примерно столько, сколько исследование.
+  deep-research:
+    nlp-url: ${HORIZON_NLP_URL:}
+    time-budget: ${HORIZON_DEEPRESEARCH_TIME_BUDGET:PT6M}
+    max-iterations: ${HORIZON_DEEPRESEARCH_MAX_ITERATIONS:40}
+    max-fetches: ${HORIZON_DEEPRESEARCH_MAX_FETCHES:30}
+    min-sources: ${HORIZON_DEEPRESEARCH_MIN_SOURCES:25}
+    # Агенту — двадцать минут из двадцати с половиной; с минутой на ответ сбор ≈ 21,5 минуты.
+    # Потолки сервиса моделей (HORIZON_NLP_RESEARCH_*) обязаны быть не ниже этих чисел: запрос
+    # сверх них сервис урежет или отвергнет.
+    quality:
+      time-budget: ${HORIZON_DEEPRESEARCH_QUALITY_TIME_BUDGET:PT20M30S}
+      max-iterations: ${HORIZON_DEEPRESEARCH_QUALITY_MAX_ITERATIONS:120}
+      max-fetches: ${HORIZON_DEEPRESEARCH_QUALITY_MAX_FETCHES:90}
+      min-sources: ${HORIZON_DEEPRESEARCH_QUALITY_MIN_SOURCES:40}
+  # Перевод русских и китайских документов на английский после сбора (разбор 93).
+  translation:
+    enabled: ${HORIZON_TRANSLATION_ENABLED:false}
+    nlp-url: ${HORIZON_NLP_URL:}
+    batch-size: ${HORIZON_TRANSLATION_BATCH_SIZE:20}
+    concurrency: ${HORIZON_TRANSLATION_CONCURRENCY:6}
+    time-budget: ${HORIZON_TRANSLATION_TIME_BUDGET:PT4M}
+    # Четыре минуты на пачку: китайские аннотации модель переводит дольше, и на стенде при ста
+    # двадцати секундах терялись целые пачки уже переведённого — таймаут срабатывал после того,
+    # как модель ответила.
+    timeout: ${HORIZON_TRANSLATION_TIMEOUT:PT240S}
+  internal:
+    # Общий секрет внутренней поверхности `/internal/**`, откуда аналитический движок забирает
+    # собранный корпус. Пустое значение закрывает поверхность: незаданная переменная — обычное
+    # состояние свежего развёртывания, и умолчание «пускать всех» означало бы открытый доступ к
+    # корпусу ровно там, где о безопасности ещё не думали.
+    token: ${HORIZON_ANALYTICS_INTERNAL_SECRET:}
+
+  outbox:
+    enabled: true
+    poll-interval: PT0.2S
+    batch-size: 100
+    max-attempts: 25
+  kafka:
+    topics:
+      ingestion-commands: horizon.ingestion.commands.v1
+    group-id: ingestion-service
+    # Три раздела у топика команд — три сбора одновременно. С одним потоком запрос второго
+    # аналитика ждал весь сбор первого, а 95-й перцентиль в 20 минут под нагрузкой — это в первую
+    # очередь очередь (разбор 106).
+    concurrency: ${HORIZON_INGESTION_COMMAND_CONCURRENCY:3}
+  ingestion:
+    page-size: ${INGESTION_PAGE_SIZE:100}
+    stale-run-after: PT2H
+    lock-lease: PT10M
+    lock-enabled: ${INGESTION_LOCK_ENABLED:true}
+    schedule-enabled: ${INGESTION_SCHEDULE_ENABLED:false}
+    incremental-window-days: 30
+    scheduled-max-documents: ${HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN:2000}
+  connectors:
+    # Sources require a contactable User-Agent; several of them throttle or block anonymous clients
+    # outright, and it is a condition of their terms of use (NFR-S12).
+    user-agent: ${HORIZON_INGESTION_USER_AGENT:HorizonBot/1.0}
+    contact-email: ${HORIZON_CONNECTOR_CONTACT_EMAIL:horizon@example.bank}
+    connect-timeout: PT2S
+    response-timeout: ${HORIZON_INGESTION_HTTP_TIMEOUT:PT30S}
+    max-response-bytes: 16777216
+    # Архив исходных ответов (BR-C5). Путь настраивается: до этого переменная деплоя
+    # HORIZON_RAW_STORE_PATH стояла во всех окружениях и не читалась никем — архив писался
+    # в относительный `var/raw` внутри контейнера.
+    raw-payload-path: ${HORIZON_RAW_STORE_PATH:var/raw}
+    resilience:
+      max-attempts: 4
+      initial-backoff: PT1S
+      max-backoff: PT30S
+      backoff-multiplier: 2.0
+      jitter-factor: 0.3
+      sliding-window-size: 20
+      minimum-number-of-calls: 5
+      failure-rate-threshold: ${HORIZON_INGESTION_CB_FAILURE_RATE_THRESHOLD:50}
+      wait-duration-in-open-state: ${HORIZON_INGESTION_CB_WAIT_DURATION:PT60S}
+      permitted-calls-in-half-open-state: 3
+    sources:
+      arxiv:
+        enabled: ${HORIZON_SOURCE_ARXIV_ENABLED:true}
+        requests-per-minute: 20
+        # Сотня записей за раз. Пятьсот стояли по замеру 2026-09-17 на свободном arXiv (100 →
+        # 200 ms, 500 → 7.6 s, 1000 → ошибка 500) и продержались одну ночь: под собственной
+        # нагрузкой arXiv отвечает на ту же страницу в 8–36 секунд, а клиент ждёт тридцать
+        # (`response-timeout`). Дальше — не медленная страница, а **потерянный источник**: четыре
+        # попытки по таймауту, `Source arxiv failed after 0 committed pages`, отчёт без arXiv и, для
+        # направления по ИИ, одна тема вместо пятнадцати.
+        #
+        # Замер 2026-09-18 тем же запросом направления, arXiv под нагрузкой: 100 → 6.0 s,
+        # 200 → 31.7 s, 300 → 503 через 51 s, 500 → 503 через 77 s. Сотня — единственный размер,
+        # который остаётся внутри таймаута и в плохой для arXiv день.
+        #
+        # Цена — больше походов: при `requests-per-minute: 20` это один запрос в три секунды, то
+        # есть ровно та вежливость, которую arXiv и просит. Семь страниц вместо двух добавляют к
+        # сбору около двадцати секунд.
+        page-size: 100
+      alphaxiv:
+        enabled: ${HORIZON_SOURCE_ALPHAXIV_ENABLED:false}
+        base-url: https://api.alphaxiv.org/mcp/v1
+        api-key: ${HORIZON_ALPHAXIV_API_KEY:}
+        requests-per-minute: 30
+        page-size: 15
+      openalex:
+        enabled: ${HORIZON_SOURCE_OPENALEX_ENABLED:true}
+        # Ключ необязателен, но без него бюджет — $0,10 в сутки на адрес, то есть сто поисковых
+        # запросов, и на демонстрационном стенде он кончается к середине дня (разбор 88).
+        api-key: ${HORIZON_OPENALEX_API_KEY:}
+        requests-per-minute: 60
+        page-size: 200
+      # USPTO Patent Public Search (разбор 110): заявки и патенты США без ключа, анонимная сессия.
+      # Шесть запросов в минуту — потолок в коде; с 7 ноября 2026 площадка обещает требовать вход.
+      uspto:
+        enabled: ${HORIZON_SOURCE_USPTO_ENABLED:true}
+        base-url: https://ppubs.uspto.gov
+        requests-per-minute: 6
+        page-size: 50
+      crossref:
+        enabled: ${HORIZON_SOURCE_CROSSREF_ENABLED:true}
+        requests-per-minute: 50
+        page-size: 100
+      github:
+        enabled: ${HORIZON_SOURCE_GITHUB_ENABLED:true}
+        token: ${HORIZON_GITHUB_TOKEN:}
+        page-size: 100
+      rss:
+        enabled: ${HORIZON_SOURCE_RSS_ENABLED:true}
+        # Список лент через запятую. Задать его до сих пор было нечем: свойство существовало, а
+        # переменной под него не было, и включённый источник объявлял себя недоступным — «не
+        # настроено ни одной ленты». Включать rss имеет смысл только вместе с этим списком.
+        feeds: ${HORIZON_SOURCE_RSS_FEEDS:}
+        requests-per-minute: 60
+      # Источники, добавленные по двум исследованиям к кейсу (разбор 89). Все без обязательного
+      # ключа: второй научный указатель, биомедицина с аффилиациями, раннее внимание разработчиков
+      # и мировые новости, включая русскоязычные.
+      # The Lens — научные работы и патенты всех ведомств; из него выгружен эталонный набор кейса.
+      # Без ключа API не отвечает: источник объявляет себя недоступным, пока ключ не задан.
+      lens:
+        enabled: ${HORIZON_SOURCE_LENS_ENABLED:true}
+        api-key: ${HORIZON_LENS_API_TOKEN:}
+        requests-per-minute: ${HORIZON_LENS_REQUESTS_PER_MINUTE:10}
+        page-size: 100
+      lenspatents:
+        enabled: ${HORIZON_SOURCE_LENS_ENABLED:true}
+        api-key: ${HORIZON_LENS_PATENT_API_TOKEN:${HORIZON_LENS_API_TOKEN:}}
+        requests-per-minute: ${HORIZON_LENS_REQUESTS_PER_MINUTE:10}
+        page-size: 100
+      semanticscholar:
+        enabled: ${HORIZON_SOURCE_SEMANTICSCHOLAR_ENABLED:true}
+        api-key: ${HORIZON_SEMANTIC_SCHOLAR_API_KEY:}
+      europepmc:
+        enabled: ${HORIZON_SOURCE_EUROPEPMC_ENABLED:true}
+        page-size: 50
+      hackernews:
+        enabled: ${HORIZON_SOURCE_HACKERNEWS_ENABLED:true}
+        page-size: 100
+      gdelt:
+        enabled: ${HORIZON_SOURCE_GDELT_ENABLED:true}
+        requests-per-minute: 3
+      # Продуктовые и отраслевые источники (разбор 101): часть эталона — выходы продуктов, раунды и
+      # первые внедрения, которых нет в научной литературе. Оба ходят в сайты, а не в API, поэтому
+      # проверяют robots.txt и держат Crawl-delay площадки — десять секунд на хост.
+      habr:
+        enabled: ${HORIZON_SOURCE_HABR_ENABLED:true}
+        # Поисковая лента: двадцать самых релевантных публикаций на формулировку, страниц нет.
+        base-url: https://habr.com/ru/rss/search/
+        requests-per-minute: 6
+      industry:
+        enabled: ${HORIZON_SOURCE_INDUSTRY_ENABLED:true}
+        # Поисковые ленты WordPress, по изданию на направление датасета: {q} — формулировка,
+        # {page} — страница. Каждое издание проверено живым запросом и robots.txt (разбор 101).
+        feeds: ${HORIZON_SOURCE_INDUSTRY_FEEDS:https://www.edgeir.com/search/{q}/feed/rss2/?paged={page},https://siliconangle.com/search/{q}/feed/rss2/?paged={page},https://www.plantengineering.com/search/{q}/feed/rss2/?paged={page},https://robohub.org/search/{q}/feed/rss2/?paged={page},https://cyberscoop.com/search/{q}/feed/rss2/?paged={page},https://thefintechtimes.com/search/{q}/feed/rss2/?paged={page}}
+        requests-per-minute: 6
+      # Пресс-релизы (разбор 109): 66% ссылок эталона — сайты компаний и релизы. По ТЗ релиз —
+      # первичный индикатор, не основание: доверенность пониженная, но дата и компания — первоисточник.
+      # Лента по ключевому слову — двадцать последних релизов, страниц нет.
+      globenewswire:
+        enabled: ${HORIZON_SOURCE_GLOBENEWSWIRE_ENABLED:true}
+        base-url: https://www.globenewswire.com/RssFeed/keyword/{q}
+        requests-per-minute: 20
+      # Поиск PR Newswire: до трёх страниц по 25 на формулировку.
+      prnewswire:
+        enabled: ${HORIZON_SOURCE_PRNEWSWIRE_ENABLED:true}
+        base-url: https://www.prnewswire.com/search/news/
+        requests-per-minute: 12
+      # Лента запусков Product Hunt: поиск закрыт robots.txt, поэтому только свежие запуски и
+      # категории, сопоставленные с формулировкой локально.
+      producthunt:
+        enabled: ${HORIZON_SOURCE_PRODUCTHUNT_ENABLED:true}
+        base-url: https://www.producthunt.com/feed
+        requests-per-minute: 20
+      # SEC EDGAR, полнотекстовый поиск (разбор 109): Form D — частный раунд, S-1 — выход на биржу.
+      # Эксперты отсеивали технологии с большими инвестициями: раунд — ранние деньги, S-1 — зрелость.
+      edgar:
+        enabled: ${HORIZON_SOURCE_EDGAR_ENABLED:true}
+        base-url: https://efts.sec.gov/LATEST/search-index
+        requests-per-minute: 6
+      # IETF Datatracker: черновики стандартов — ранний технический сигнал новых протоколов.
+      ietf:
+        enabled: ${HORIZON_SOURCE_IETF_ENABLED:true}
+        base-url: https://datatracker.ietf.org/api/v1/
+        requests-per-minute: 20
+        page-size: 50
+      # Ранняя стадия (разбор 109): гранты SBIR/STTR и NSF финансируют прототипы — «патенты есть,
+      # продуктов нет» в словах постановщика. HTML-поиск SBIR.gov: JSON API отвечает 403.
+      # page-size — наград на формулировку: каждая стоит своей страницы с паузой 3 с, и 10 держат
+      # источник в пределах быстрого режима (≈35 с на формулировку).
+      sbir:
+        enabled: ${HORIZON_SOURCE_SBIR_ENABLED:true}
+        base-url: https://www.sbir.gov/awards
+        requests-per-minute: 20
+        page-size: 10
+      # NSF Award Search API: фраза в кавычках, окно по дате решения о награде.
+      nsf:
+        enabled: ${HORIZON_SOURCE_NSF_ENABLED:true}
+        base-url: https://api.nsf.gov/services/v1/awards.json
+        requests-per-minute: 30
+        page-size: 25
+      # Инновационный центр BIS, песочница FCA, ленты Банка России (ru/en парами). Поиска нет —
+      # перечни сопоставляются с формулировками локально; robots.txt проверен 28.09.2026.
+      regulators:
+        enabled: ${HORIZON_SOURCE_REGULATORS_ENABLED:true}
+        feeds: ${HORIZON_SOURCE_REGULATORS_FEEDS:https://www.bis.org/about/innovation-hub/projects,https://www.fca.org.uk/firms/innovation/regulatory-sandbox/accepted-firms,https://www.cbr.ru/rss/eventrss,https://www.cbr.ru/rss/engeventrss,https://www.cbr.ru/rss/RssPress,https://www.cbr.ru/rss/EngRssPress}
+        requests-per-minute: 20
+      # Глубокое исследование: выключено по умолчанию, как все сетевые источники, и вдобавок стоит
+      # времени саги и токенов облачной модели (разбор 102).
+      deepresearch:
+        enabled: ${HORIZON_SOURCE_DEEPRESEARCH_ENABLED:false}
+      # Собственный веб-корпус (разбор 110): поиск по страницам, собранным заранее; нужен файл
+      # корпуса у сервиса моделей (HORIZON_NLP_WEBCORPUS_PATH).
+      webcorpus:
+        enabled: ${HORIZON_SOURCE_WEBCORPUS_ENABLED:false}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: when-authorized
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
+  metrics:
+    tags:
+      application: ${spring.application.name}
+  tracing:
+    sampling:
+      probability: ${OTEL_TRACES_SAMPLER_ARG:1.0}
+  otlp:
+    tracing:
+      endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://localhost:4318}/v1/traces
+
+springdoc:
+  api-docs:
+    path: /v3/api-docs
+  swagger-ui:
+    path: /swagger-ui.html
+
+logging:
+  level:
+    root: INFO
+    dev.horizon: DEBUG

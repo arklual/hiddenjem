@@ -1,0 +1,200 @@
+{{/*
+=============================================================================
+  NetworkPolicy — «запретить всё, разрешить поимённо»
+=============================================================================
+  Модель угроз простая: скомпрометированная зависимость в одном сервисе не
+  должна давать доступ ни к базам данных других сервисов, ни к интернету.
+  Изоляция схем в PostgreSQL (ADR-0006) закрывает данные, сетевые политики —
+  сеть; по отдельности каждая мера дырявая.
+
+  Правила выводятся из тех же связей, что описаны в архитектуре: если сервиса
+  нет в `egressTo`, он физически не может открыть соединение — даже если кто-то
+  случайно пропишет его адрес в конфигурации.
+
+  ВАЖНО: политики требуют CNI с их поддержкой (Calico, Cilium, Antrea).
+  На CNI без поддержки объекты создадутся и будут игнорироваться — то есть
+  изоляции не будет, а выглядеть всё будет корректно. Проверка при внедрении
+  обязательна.
+=============================================================================
+*/}}
+{{- if .Values.networkPolicy.enabled }}
+{{- $root := . -}}
+
+{{- if .Values.networkPolicy.defaultDeny }}
+---
+# ─────────────────────────── Базовый запрет ───────────────────────────
+# Пустой podSelector = все поды namespace. Отсутствие секций ingress/egress
+# означает «ничего не разрешено». Всё дальнейшее — аддитивные разрешения:
+# в Kubernetes политики складываются, запрещающих правил не существует.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "horizon.fullname" . }}-default-deny
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" (dict "root" $root "name" "default-deny") | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Ingress
+    - Egress
+{{- end }}
+
+---
+# ─────────────────────────── DNS для всех ───────────────────────────
+# Отдельным правилом и для всех сразу: DNS нужен каждому поду, а его отсутствие
+# проявляется как «таймауты на ровном месте» и уводит расследование в сторону.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "horizon.fullname" . }}-allow-dns
+  namespace: {{ .Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" (dict "root" $root "name" "allow-dns") | nindent 4 }}
+spec:
+  podSelector: {}
+  policyTypes:
+    - Egress
+  egress:
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml .Values.networkPolicy.dnsNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+
+{{- range $name, $rawSvc := .Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+{{- $np := $svc.networkPolicy | default dict }}
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+spec:
+  podSelector:
+    {{- include "horizon.podSelector" $ctx | nindent 4 }}
+  policyTypes:
+    - Ingress
+    - Egress
+  ingress:
+    {{- /* Внешний трафик приходит только через ingress-контроллер. */}}
+    {{- if $np.ingressFromIngressController }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml $root.Values.networkPolicy.ingressControllerNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ $svc.port }}
+    {{- end }}
+    {{- /* Разрешённые внутренние источники — строго поимённо. */}}
+    {{- with $np.ingressFrom }}
+    - from:
+        {{- range . }}
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ . }}
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+        {{- end }}
+      ports:
+        - protocol: TCP
+          port: {{ $svc.port }}
+    {{- end }}
+    {{- /* Prometheus обязан достучаться до метрик, иначе сервис становится
+           «чёрным ящиком» ровно в тот момент, когда с ним что-то не так. */}}
+    {{- if $svc.metrics.enabled }}
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $root.Values.observability.otel.namespace }}
+      ports:
+        - protocol: TCP
+          port: {{ default $svc.port $svc.metrics.port }}
+    {{- end }}
+  egress:
+    {{- /* DNS продублирован здесь намеренно: политики складываются, но читающий
+           этот файл должен видеть полный набор разрешений сервиса в одном месте. */}}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              {{- toYaml $root.Values.networkPolicy.dnsNamespaceSelector | nindent 14 }}
+      ports:
+        - protocol: UDP
+          port: 53
+        - protocol: TCP
+          port: 53
+    {{- /* Телеметрия: без этого правила при default-deny пропадают трейсы,
+           и это единственный отказ, который сам себя скрывает. */}}
+    {{- if $root.Values.observability.otel.enabled }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $root.Values.observability.otel.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $root.Values.observability.otel.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: 4317
+        - protocol: TCP
+          port: 4318
+    {{- end }}
+    {{- /* Соседние сервисы Horizon — поимённо, на их собственный порт. */}}
+    {{- range $target := ($np.egressTo | default list) }}
+    {{- $targetSvc := index $root.Values.services $target }}
+    - to:
+        - podSelector:
+            matchLabels:
+              app.kubernetes.io/name: {{ $target }}
+              app.kubernetes.io/instance: {{ $root.Release.Name }}
+      ports:
+        - protocol: TCP
+          port: {{ $targetSvc.port }}
+    {{- end }}
+    {{- /* Инфраструктура: чартом не управляется, поэтому адресуется
+           селектором namespace + меток пода из values.infrastructure. */}}
+    {{- range $infra := ($np.egressInfra | default list) }}
+    {{- $cfg := index $root.Values.infrastructure $infra }}
+    - to:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: {{ $cfg.namespace }}
+          podSelector:
+            matchLabels:
+              {{- toYaml $cfg.podLabels | nindent 14 }}
+      ports:
+        - protocol: TCP
+          port: {{ default $cfg.port $cfg.httpPort }}
+    {{- end }}
+    {{- /* Выход в интернет — только для ingestion-service (коннекторы
+           источников). Приватные диапазоны исключены: без этого «доступ
+           в интернет» превращается в доступ ко всей внутренней сети банка.
+           169.254.0.0/16 исключён отдельно — это адрес сервиса метаданных
+           облака (169.254.169.254), классический путь к учётным данным узла. */}}
+    {{- if $np.egressInternet }}
+    - to:
+        - ipBlock:
+            cidr: 0.0.0.0/0
+            except:
+              - 10.0.0.0/8
+              - 172.16.0.0/12
+              - 192.168.0.0/16
+              - 169.254.0.0/16
+      ports:
+        - protocol: TCP
+          port: 443
+        - protocol: TCP
+          port: 80
+    {{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

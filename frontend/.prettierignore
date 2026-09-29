@@ -1,0 +1,5 @@
+dist
+coverage
+node_modules
+# Generated from the OpenAPI contract by `npm run gen:api` — never hand-formatted.
+src/api/generated.ts

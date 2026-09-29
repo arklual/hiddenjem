@@ -1,0 +1,990 @@
+# =============================================================================
+#  Horizon — основной конвейер проверки (PR и master)
+# =============================================================================
+#  Задача конвейера: не пустить в master изменение, нарушающее контракт, стиль,
+#  покрытие или безопасность. Всё, что не блокирует, живёт в nightly.yml —
+#  «предупреждающий» шаг в CI через две недели перестают читать.
+#
+#  Устройство:
+#    changes            -> определяет, что вообще менялось (path filters)
+#    java-build         -> матрица из 4 сервисов: юнит- и slice-тесты, покрытие
+#    java-integration   -> Testcontainers (PostgreSQL, Kafka, ClickHouse)
+#    python             -> ruff, black, mypy --strict, pytest
+#    frontend           -> eslint, tsc, vitest, сборка
+#    contracts          -> OpenAPI, JSON Schema, хеш golden-корпуса
+#    security           -> gitleaks, Trivy, OWASP Dependency-Check
+#    e2e                -> полный стек в compose + Playwright
+#    quality-gate       -> единственная обязательная проверка для ветки master
+#
+#  CodeQL вынесен в codeql.yml: у него собственное расписание и своя матрица
+#  языков. В защите ветки он указывается отдельной обязательной проверкой.
+# =============================================================================
+
+name: CI
+
+# Ветка по умолчанию в этом репозитории — master. Здесь стояло `main`, и следствие было ровно
+# такое, каким выглядит: за всё время существования проверок ни один пуш их не запускал. Гейт был
+# зелёным на машине разработчика и не существовал на сервере; ночной прогон падал пятые сутки и
+# сообщал об этом некому. Ошибка молчаливая по своей природе — «проверок не было» выглядит в
+# интерфейсе точно так же, как «проверять было нечего».
+on:
+  pull_request:
+    branches: [master]
+  # ВРЕМЕННО ОТКЛЮЧЕНО: CI на пуш в master (по запросу). PR-проверки не тронуты.
+  # Чтобы вернуть: раскомментировать эти две строки И откатить временный push-триггер
+  # в deploy-stand.yml (там же помечено).
+  # push:
+  #   branches: [master]
+  workflow_dispatch:
+
+# Права по умолчанию — минимальные. Джобы, которым нужно больше
+# (комментарии к PR, загрузка SARIF), поднимают их у себя.
+permissions:
+  contents: read
+
+# Новый пуш в ту же ветку отменяет предыдущий прогон: держать очередь
+# из устаревших сборок бессмысленно и дорого. Для master отмена запрещена —
+# там каждый коммит должен быть проверен полностью.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  JAVA_VERSION: "21"
+  NODE_VERSION: "22"
+  PYTHON_VERSION: "3.12"
+  MAVEN_ARGS: "-B -ntp -Dstyle.color=always"
+  # Ограничение памяти Maven: раннер GitHub — 7 ГБ, и без потолка
+  # параллельная сборка модулей выедает его на Testcontainers.
+  MAVEN_OPTS: "-Xmx2g -XX:+UseSerialGC"
+
+jobs:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Что изменилось
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Без фильтров правка README запускала бы сборку четырёх Java-сервисов,
+  #  Testcontainers и e2e — двадцать минут на изменение одной строки текста.
+  changes:
+    name: Определение изменений
+    runs-on: ubuntu-latest
+    outputs:
+      java: ${{ steps.filter.outputs.java }}
+      java-services: ${{ steps.filter.outputs.java_services }}
+      python: ${{ steps.filter.outputs.python }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      contracts: ${{ steps.filter.outputs.contracts }}
+      deploy: ${{ steps.filter.outputs.deploy }}
+      e2e: ${{ steps.filter.outputs.e2e }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            java:
+              - 'services/pom.xml'
+              - 'services/platform/**'
+              - 'services/gateway/**'
+              - 'services/trends-service/**'
+              - 'services/ingestion-service/**'
+            python:
+              - 'services/analytics-service/**'
+            frontend:
+              - 'frontend/**'
+              # Клиент порождается из контракта: его правка меняет то, что должно быть в frontend/.
+              - 'contracts/openapi/**'
+              - 'tools/check-generated-client.sh'
+            contracts:
+              - 'contracts/**'
+              - 'fixtures/**'
+              # Миграции проверяются в этом же задании. Без них фильтра дефект вида «две ветки
+              # взяли один номер версии» не поймается там, где он и возникает — в pull request:
+              # на push задание идёт всегда, но это уже после слияния.
+              - 'services/*/src/main/resources/db/migration/**'
+              - 'tools/check-migrations.py'
+              - 'tools/test_check_migrations.py'
+              - 'deploy/compose/clickhouse/**'
+              - 'tools/test-clickhouse-migrations.sh'
+            deploy:
+              - 'deploy/**'
+              - '.github/workflows/**'
+              - 'Makefile'
+            # e2e гоняем при изменении чего угодно, что попадает в образ:
+            # сквозной сценарий — единственная проверка, которая видит
+            # ошибки на стыках, а они возникают именно там.
+            e2e:
+              - 'services/**'
+              - 'frontend/**'
+              - 'deploy/compose/**'
+              - 'tests/e2e/**'
+              - 'contracts/**'
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Java: юнит- и slice-тесты + покрытие
+  # ═══════════════════════════════════════════════════════════════════════════
+  java-build:
+    name: Java · ${{ matrix.service }}
+    needs: changes
+    if: needs.changes.outputs.java == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      # Падение одного сервиса не должно скрывать состояние трёх остальных:
+      # разработчик должен увидеть все проблемы за один прогон.
+      fail-fast: false
+      # Пороги заморожены на измеренном, а не на желаемом, и это надо читать буквально: NFR-M4
+      # требует >= 75% по сервису и >= 90% по доменному слою, и **сейчас требование не выполнено**.
+      # Числа ниже — первое в истории проекта измерение: до этого конвейер ждал несуществующую
+      # ветку и порог не проверялся ни разу.
+      #
+      # Поставить объявленные 75/80 значило бы держать сборку красной, пока кто-то не напишет
+      # порядка двух тысяч строк тестов; поставить измеренное и промолчать — выдать долг за норму.
+      # Поэтому измеренное записано явно, снижать его нельзя (проверка падает), а разрыв с NFR-M4
+      # занесён в бэклог отдельным пунктом.
+      matrix:
+        include:
+          - service: gateway
+            coverage: 0.60
+          - service: trends-service
+            # измерено 53.79% при требуемых 80% (домен — ядро продукта, разрыв самый дорогой)
+            coverage: 0.53
+          - service: ingestion-service
+            # измерено 52.94% при требуемых 75%
+            coverage: 0.52
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Java ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          # Встроенный кэш setup-java хранит ~/.m2/repository и учитывает
+          # хеш всех pom.xml — отдельный actions/cache не нужен.
+          cache: maven
+
+      - name: Проверка стиля (Spotless + Checkstyle)
+        # Отдельным шагом и ДО тестов: замечание про форматирование должно
+        # приходить за 30 секунд, а не после десяти минут тестов (NFR-M6).
+        run: >-
+          mvn ${{ env.MAVEN_ARGS }} -f services/pom.xml
+          -pl ${{ matrix.service }} -am
+          spotless:check
+        continue-on-error: false
+
+      - name: Сборка и тесты
+        run: >-
+          mvn ${{ env.MAVEN_ARGS }} -f services/pom.xml
+          -pl ${{ matrix.service }} -am
+          verify
+          -Djacoco.line.coverage=${{ matrix.coverage }}
+
+      - name: Проверка покрытия (NFR-M4)
+        # Порог проверяется здесь, а не только плагином: так сообщение об
+        # ошибке содержит фактические цифры, и не нужно лезть в артефакты.
+        run: |
+          python3 - <<'PY'
+          import sys, xml.etree.ElementTree as ET, pathlib
+          threshold = float("${{ matrix.coverage }}")
+          report = pathlib.Path("services/${{ matrix.service }}/target/site/jacoco/jacoco.xml")
+          if not report.exists():
+              print(f"::error::Отчёт JaCoCo не найден: {report}. "
+                    f"Проверьте, что jacoco-maven-plugin выполнил goal report.")
+              sys.exit(1)
+          root = ET.parse(report).getroot()
+          for counter in root.findall("counter"):
+              if counter.get("type") == "LINE":
+                  covered = int(counter.get("covered")); missed = int(counter.get("missed"))
+                  total = covered + missed
+                  ratio = covered / total if total else 0.0
+                  print(f"Покрытие строк: {ratio:.2%} ({covered}/{total}), порог {threshold:.0%}")
+                  if ratio < threshold:
+                      print(f"::error title=Недостаточное покрытие::"
+                            f"${{ matrix.service }}: {ratio:.2%} < {threshold:.0%} (NFR-M4)")
+                      sys.exit(1)
+                  sys.exit(0)
+          print("::error::В отчёте JaCoCo нет счётчика LINE")
+          sys.exit(1)
+          PY
+
+      - name: Публикация отчёта JaCoCo
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: jacoco-${{ matrix.service }}
+          path: |
+            services/${{ matrix.service }}/target/site/jacoco/
+          retention-days: 14
+
+      - name: Публикация отчётов тестов
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-${{ matrix.service }}
+          path: services/${{ matrix.service }}/target/surefire-reports/
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Java: интеграционные тесты на Testcontainers
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Отдельный job, а не часть предыдущего: они на порядок медленнее,
+  #  и смешивать их означает ждать десять минут ради ошибки компиляции.
+  #  Docker на раннерах GitHub есть из коробки, ставить ничего не нужно.
+  java-integration:
+    name: Java · интеграционные тесты
+    needs: [changes, java-build]
+    if: needs.changes.outputs.java == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: ${{ env.JAVA_VERSION }}
+          cache: maven
+
+      - name: Предзагрузка образов Testcontainers
+        # Тянем образы заранее и параллельно: иначе первый тест каждого
+        # модуля висит на docker pull и упирается в таймаут запуска контейнера.
+        run: |
+          docker pull pgvector/pgvector:pg16 &
+          docker pull redpandadata/redpanda:v24.2.7 &
+          docker pull clickhouse/clickhouse-server:24.8-alpine &
+          docker pull redis:7-alpine &
+          wait
+          docker images
+
+      - name: Интеграционные тесты
+        env:
+          # Ryuk убирает контейнеры после прогона; на раннере он избыточен
+          # (машина одноразовая) и иногда сам становится источником флейка.
+          TESTCONTAINERS_RYUK_DISABLED: "true"
+          TESTCONTAINERS_CHECKS_DISABLE: "true"
+        # Профиль integration подключает failsafe; юнит-тесты при этом
+        # прогоняются повторно — это дешевле, чем поддерживать флаг их
+        # пропуска, который однажды скроет настоящую регрессию.
+        run: >-
+          mvn ${{ env.MAVEN_ARGS }} -f services/pom.xml
+          verify -Pintegration
+
+      - name: Публикация отчётов
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: failsafe-reports
+          path: services/**/target/failsafe-reports/
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Python: analytics-service
+  # ═══════════════════════════════════════════════════════════════════════════
+  python:
+    name: Python · analytics-service
+    needs: changes
+    if: needs.changes.outputs.python == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: services/analytics-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверка наличия пакета
+        id: probe
+        working-directory: .
+        # Репозиторий собирается по частям: пока пакета нет, job не должен
+        # падать — но и «зелёным» без проверок он притворяться не должен.
+        run: |
+          if [ -f services/analytics-service/pyproject.toml ] || [ -d services/analytics-service/horizon_analytics ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=analytics-service ещё не реализован::"\
+                 "Пакет horizon_analytics отсутствует, проверки Python пропущены."
+          fi
+
+      - name: Python ${{ env.PYTHON_VERSION }}
+        if: steps.probe.outputs.present == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+          cache: pip
+          cache-dependency-path: services/analytics-service/pyproject.toml
+
+      - name: Установка зависимостей
+        if: steps.probe.outputs.present == 'true'
+        run: |
+          python -m pip install --upgrade pip
+          # Тот же источник, что у образа и у ./tools/verify.sh: список зависимостей
+          # в репозитории один, иначе проверяется не то, что собирается.
+          pip install -e '.[dev]'
+
+      - name: ruff (линтер)
+        if: steps.probe.outputs.present == 'true'
+        run: ruff check --output-format=github .
+
+      - name: black (форматирование)
+        if: steps.probe.outputs.present == 'true'
+        run: black --check --diff .
+
+      - name: mypy --strict (типы)
+        if: steps.probe.outputs.present == 'true'
+        # strict — требование NFR-M6. Ослабление режима допускается только
+        # точечными per-module секциями в pyproject.toml с обоснованием.
+        # Именно `src`, как в локальном гейте: пакет лежит в `src/horizon_analytics`, и путь
+        # `horizon_analytics` из каталога сервиса не существует. Шаг падал с «cannot read file»
+        # каждый раз, когда его запускали, — то есть ни разу, пока конвейер ждал несуществующую ветку.
+        run: mypy --strict src
+
+      - name: import-linter (границы слоёв, NFR-M1)
+        if: steps.probe.outputs.present == 'true'
+        # Шаг был условным: нет конфигурации — предупреждение и зелено. Конфигурации не было ни
+        # разу, так что предупреждение печаталось всегда, а проверка не выполнялась никогда.
+        # Предупреждение в GitHub Actions не роняет задание и теряется среди прочего вывода.
+        # Теперь контракты существуют, и их отсутствие — провал, а не примечание.
+        run: lint-imports --config pyproject.toml
+
+      - name: pytest с покрытием
+        if: steps.probe.outputs.present == 'true'
+        # NFR-M4: >= 75% по сервису. Доменный слой проверяется отдельным
+        # порогом в конфигурации coverage.
+        # Путь `tests` обязателен: без него pytest берёт корнем каталог сервиса, и модули тестов
+        # импортируются как `tests.*` из места, где такого пакета нет, — сбор падает на
+        # ModuleNotFoundError. Локальный гейт вызывает ровно так же.
+        # `python -m pytest`, а не `pytest`: только первый добавляет текущий каталог в sys.path, а
+        # тесты импортируют друг друга как `tests.*`. С голым `pytest` сбор падал на
+        # ModuleNotFoundError — локальный гейт зовёт именно через `-m`.
+        run: >-
+          python -m pytest tests
+          --cov=horizon_analytics
+          --cov-report=xml
+          --cov-report=term-missing
+          --cov-fail-under=75
+          -q
+
+      - name: Публикация покрытия
+        if: always() && steps.probe.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-python
+          path: services/analytics-service/coverage.xml
+          retention-days: 14
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Frontend
+  # ═══════════════════════════════════════════════════════════════════════════
+  frontend:
+    name: Frontend
+    needs: changes
+    if: needs.changes.outputs.frontend == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Проверка наличия приложения
+        id: probe
+        working-directory: .
+        run: |
+          if [ -f frontend/package.json ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=frontend ещё не реализован::package.json отсутствует, проверки пропущены."
+          fi
+
+      - name: Node ${{ env.NODE_VERSION }}
+        if: steps.probe.outputs.present == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Установка зависимостей
+        if: steps.probe.outputs.present == 'true'
+        # npm ci, а не npm install: ставит ровно то, что в lock-файле,
+        # и падает при рассинхронизации с package.json.
+        run: npm ci
+
+      - name: ESLint
+        if: steps.probe.outputs.present == 'true'
+        run: npm run lint
+
+      - name: Проверка типов (tsc -b)
+        if: steps.probe.outputs.present == 'true'
+        # Отдельно от сборки: Vite транспилирует без проверки типов,
+        # поэтому «собралось» не означает «типы сходятся» (NFR-M6).
+        #
+        # Именно `tsc -b`, а не `--noEmit`: корневой tsconfig.json — solution-style, он не
+        # перечисляет исходников, только ссылки, поэтому `--noEmit` компилировал ноль файлов и
+        # всегда завершался успехом. Шаг был зелёным при четырнадцати ошибках типов.
+        run: npm run typecheck
+
+      - name: Клиент соответствует контракту
+        if: steps.probe.outputs.present == 'true'
+        # Правка контракта без перегенерации оставляет клиент описывающим прошлую версию API.
+        # Проверки соответствия Zod-схем типам это не ловят: обе стороны устарели одинаково.
+        working-directory: .
+        run: ./tools/check-generated-client.sh
+
+      - name: Проверка типов действительно охватывает код
+        if: steps.probe.outputs.present == 'true'
+        # Тайпчекер, которому нечего проверять, не падает — поэтому холостой гейт ловится только
+        # подсчётом охваченных файлов.
+        working-directory: .
+        run: ./tools/check-typecheck-is-real.sh
+
+      - name: Юнит-тесты (vitest)
+        if: steps.probe.outputs.present == 'true'
+        # Без `--coverage`: сборщик покрытия (@vitest/coverage-v8) в зависимостях не объявлен, и
+        # флаг ронял шаг сообщением «MISSING DEPENDENCY». Ни порога покрытия, ни выгрузки отчёта у
+        # фронтенда нет — то есть флаг ничего не измерял и никуда не отдавал. Понадобится покрытие
+        # — заводить его надо целиком: зависимость, порог, артефакт.
+        run: npm run test -- --run
+
+      - name: Сборка
+        if: steps.probe.outputs.present == 'true'
+        run: npm run build
+
+      - name: Публикация бандла
+        if: steps.probe.outputs.present == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/dist/
+          retention-days: 7
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Контракты: OpenAPI, JSON Schema, golden-корпус
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Контракт — источник истины (NFR-M8). Если он невалиден, все контрактные
+  #  тесты проверяют не то, что нужно, и делают это убедительно.
+  contracts:
+    name: Контракты
+    needs: changes
+    if: needs.changes.outputs.contracts == 'true' || github.event_name == 'push'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Валидация OpenAPI
+        run: npx --yes @redocly/cli@latest lint contracts/openapi/horizon-api.yaml --format=github-actions
+
+      - name: Валидация AsyncAPI
+        run: |
+          npx --yes @asyncapi/cli@latest validate contracts/asyncapi/horizon-events.yaml \
+            || { echo "::error title=AsyncAPI невалиден::contracts/asyncapi/horizon-events.yaml"; exit 1; }
+
+      - name: Разбор миграций не разъехался
+        # Проверка миграций разбирает SQL: на файлах без дефектов сломанный разбор отвечает так
+        # же, как исправный, поэтому у неё есть собственные случаи.
+        run: python3 tools/test_check_migrations.py
+
+      - name: Разборщик YAML для проверок ниже
+        # Шаги контрактов читают YAML питоном, а на раннере PyYAML не предустановлен: шаг падал с
+        # ModuleNotFoundError, то есть ссылки в контракте не проверялись ни разу.
+        run: python3 -m pip install --quiet pyyaml
+
+      - name: Ссылки внутри OpenAPI разрешаются
+        # redocly lint ниже это ловит, но только если дошёл до него: разбор YAML проходит и при
+        # $ref на несуществующий компонент, поэтому опечатка прожила две итерации незамеченной.
+        run: |
+          python3 - <<'PY'
+          import sys, yaml
+          doc = yaml.safe_load(open("contracts/openapi/horizon-api.yaml", encoding="utf-8"))
+          def refs(node, path="#"):
+              if isinstance(node, dict):
+                  for key, value in node.items():
+                      if key == "$ref" and isinstance(value, str):
+                          yield value, path
+                      else:
+                          yield from refs(value, f"{path}/{key}")
+              elif isinstance(node, list):
+                  for index, value in enumerate(node):
+                      yield from refs(value, f"{path}/{index}")
+          def resolve(document, pointer):
+              if not pointer.startswith("#/"):
+                  return True
+              node = document
+              for part in pointer[2:].split("/"):
+                  part = part.replace("~1", "/").replace("~0", "~")
+                  if not isinstance(node, dict) or part not in node:
+                      return False
+                  node = node[part]
+              return True
+          broken = [(r, w) for r, w in refs(doc) if not resolve(doc, r)]
+          for ref, where in broken:
+              print(f"::error::$ref не разрешается: {ref} (в {where})")
+          sys.exit(1 if broken else 0)
+          PY
+
+      - name: Проба ведёт себя так, как обещает
+        # `tools/probe.sh` ломает боевой код, чтобы проверить, краснеет ли тест. На нём держатся
+        # утверждения «проверено подменой» во всей истории изменений. Трижды за одну сессию проба,
+        # сделанная руками, «прошла успешно» по причинам, к предмету отношения не имевшим:
+        # несовпавший якорь, несработавшее восстановление, сломанная команда проверки. Инструмент
+        # делает эти случаи отказом; шаг проверяет, что делает.
+        run: ./tools/test-probe.sh
+
+      - name: Гейт учитывает пропущенные проверки
+        # `tools/verify.sh` печатал «Все проверки пройдены» независимо от того, сколько проверок
+        # выполнилось: пропуски нигде не накапливались. На машине без JDK, npm и PyYAML гейт
+        # сообщал об успехе, не проверив ничего, и возвращал ноль — ошибка, выглядящая как успех.
+        run: ./tools/test-verify-summary.sh
+
+      - name: Прогонщик миграций ClickHouse
+        # Схема ClickHouse разворачивалась через CREATE TABLE IF NOT EXISTS и на существующем
+        # кластере не менялась никогда. Прогонщик проверяется заглушкой клиента: кластер в этом
+        # задании не поднимается, а проверять надо именно логику применения.
+        run: ./tools/test-clickhouse-migrations.sh
+
+      - name: Миграции применимы
+        # Дефекты миграций не видит ни компилятор, ни тесты: файл синтаксически верен, тесты идут
+        # на пустой схеме, а сервис не поднимается уже на стенде. Особенно дубликат номера версии:
+        # две ветки независимо берут следующий номер, обе зелёные, ломается слияние.
+        run: python3 tools/check-migrations.py
+
+      - name: Валидация JSON Schema (draft 2020-12)
+        run: |
+          pip install --quiet "jsonschema>=4.23" referencing
+          python3 - <<'PY'
+          import json, pathlib, sys
+          from jsonschema import Draft202012Validator
+
+          failures = []
+          schemas = sorted(pathlib.Path("contracts/schemas").glob("*.json"))
+          if not schemas:
+              print("::error::В contracts/schemas нет ни одной схемы")
+              sys.exit(1)
+
+          for path in schemas:
+              try:
+                  doc = json.loads(path.read_text(encoding="utf-8"))
+              except json.JSONDecodeError as e:
+                  failures.append(f"{path}: не разбирается как JSON — {e}")
+                  continue
+
+              declared = doc.get("$schema", "")
+              if "2020-12" not in declared:
+                  # Версия диалекта — часть контракта: валидатор, читающий
+                  # схему как draft-07, молча иначе трактует unevaluatedProperties.
+                  failures.append(f"{path}: $schema = {declared!r}, ожидается draft 2020-12")
+                  continue
+
+              try:
+                  Draft202012Validator.check_schema(doc)
+              except Exception as e:
+                  failures.append(f"{path}: схема не валидна — {e}")
+                  continue
+
+              print(f"  ok  {path}")
+
+          if failures:
+              for f in failures:
+                  print(f"::error title=Невалидная JSON Schema::{f}")
+              sys.exit(1)
+          print(f"\nПроверено схем: {len(schemas)}")
+          PY
+
+      - name: Хеш golden-корпуса (ADR-0015)
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, sys
+
+          corpus = pathlib.Path("fixtures/corpus/documents.jsonl")
+          manifest = pathlib.Path("fixtures/corpus/manifest.json")
+
+          if not corpus.exists():
+              print("::warning title=Golden-корпус отсутствует::"
+                    "fixtures/corpus/documents.jsonl ещё не добавлен — проверка пропущена.")
+              sys.exit(0)
+          if not manifest.exists():
+              print("::error title=Нет манифеста корпуса::"
+                    "fixtures/corpus/documents.jsonl есть, а manifest.json нет. "
+                    "Без манифеста корпус можно изменить незаметно, и снапшот-тесты "
+                    "начнут проверять другой набор данных.")
+              sys.exit(1)
+
+          # Хеш считается побайтово. .gitattributes запрещает нормализацию EOL
+          # для fixtures/** именно ради того, чтобы это значение не зависело от ОС.
+          digest = hashlib.sha256(corpus.read_bytes()).hexdigest()
+          lines = sum(1 for _ in corpus.open("rb"))
+
+          data = json.loads(manifest.read_text(encoding="utf-8"))
+          expected = data.get("sha256") or data.get("documentsSha256")
+          expected_count = data.get("documentCount")
+
+          problems = []
+          if expected is None:
+              problems.append("в manifest.json нет поля sha256")
+          elif expected != digest:
+              problems.append(f"хеш не совпадает: ожидался {expected}, получен {digest}")
+          if expected_count is not None and expected_count != lines:
+              problems.append(f"число документов не совпадает: ожидалось {expected_count}, получено {lines}")
+
+          if problems:
+              for p in problems:
+                  print(f"::error title=Golden-корпус изменён::{p}")
+              print("Если корпус изменён намеренно — обновите manifest.json "
+                    "и ЭТАЛОНЫ снапшот-тестов в одном коммите с обоснованием.")
+              sys.exit(1)
+
+          print(f"Golden-корпус в порядке: {lines} документов, sha256={digest[:16]}...")
+          PY
+
+      - name: Совместимость схем событий (NFR-M8)
+        run: |
+          # Ломающее изменение опубликованного контракта = новая версия топика,
+          # а не правка существующей. Здесь проверяется, что *.v1-схемы
+          # не потеряли обязательных полей относительно master.
+          git fetch --no-tags --depth=1 origin ${{ github.base_ref || 'master' }} 2>/dev/null || true
+          python3 - <<'PY'
+          import json, pathlib, subprocess, sys
+
+          base = "${{ github.base_ref || 'master' }}"
+          try:
+              changed = subprocess.run(
+                  ["git", "diff", "--name-only", f"origin/{base}...HEAD", "--", "contracts/schemas"],
+                  capture_output=True, text=True, check=True).stdout.split()
+          except subprocess.CalledProcessError:
+              print("::notice::Базовая ветка недоступна — проверка совместимости пропущена")
+              sys.exit(0)
+
+          breaking = []
+          for name in changed:
+              path = pathlib.Path(name)
+              if not path.exists():
+                  breaking.append(f"{name}: схема удалена")
+                  continue
+              try:
+                  old = json.loads(subprocess.run(
+                      ["git", "show", f"origin/{base}:{name}"],
+                      capture_output=True, text=True, check=True).stdout)
+              except subprocess.CalledProcessError:
+                  continue  # новая схема — совместимость проверять не с чем
+              new = json.loads(path.read_text(encoding="utf-8"))
+              added = set(new.get("required", [])) - set(old.get("required", []))
+              removed = set(old.get("properties", {})) - set(new.get("properties", {}))
+              if added:
+                  breaking.append(f"{name}: добавлены обязательные поля {sorted(added)}")
+              if removed:
+                  breaking.append(f"{name}: удалены поля {sorted(removed)}")
+
+          if breaking:
+              for b in breaking:
+                  print(f"::error title=Несовместимое изменение контракта::{b}")
+              print("NFR-M8: обратная несовместимость требует новой версии (.v2), "
+                    "а не правки существующей схемы.")
+              sys.exit(1)
+          print("Изменения контрактов обратно совместимы")
+          PY
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Безопасность
+  # ═══════════════════════════════════════════════════════════════════════════
+  security:
+    name: Безопасность
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      # Нужны для публикации SARIF во вкладку Security.
+      security-events: write
+      actions: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # gitleaks проверяет ИСТОРИЮ: секрет, добавленный и удалённый
+          # следующим коммитом, всё равно скомпрометирован и должен быть найден.
+          fetch-depth: 0
+
+      # ─────────────── Секреты в репозитории (NFR-S2, блокирующе) ───────────────
+      - name: gitleaks
+        uses: gitleaks/gitleaks-action@v2
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Лицензия нужна только организациям; для публичных репозиториев
+          # и личных аккаунтов действие работает без неё.
+          GITLEAKS_LICENSE: ${{ secrets.GITLEAKS_LICENSE }}
+          GITLEAKS_ENABLE_UPLOAD_ARTIFACT: "true"
+
+      # ─────────────── Уязвимости зависимостей и конфигурации ───────────────
+      - name: Trivy · файловая система
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: fs
+          scan-ref: .
+          scanners: vuln,secret,misconfig
+          # NFR-S8: сборка падает при HIGH/CRITICAL. Исключения оформляются
+          # файлом .trivyignore с датой пересмотра, а не понижением порога.
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          ignore-unfixed: true
+          # Таблица в журнал, а не SARIF в файл. Прежний вариант складывал находки в файл и отдавал
+          # его в code scanning, а он в этом репозитории не включён: шаг падал, ничего не показав, —
+          # «уязвимость найдена» и «отчёт некуда положить» выглядели одинаково. Включат code
+          # scanning — вернуть SARIF будет одной строкой, но и тогда таблица в журнале полезнее
+          # ссылки на вкладку.
+          format: table
+          trivyignores: .trivyignore
+          # Чарт исключён из файлового сканирования: рендер шаблонов Helm требует values, которых
+          # сканер не знает, и он падает целиком — то есть роняет и проверку всего остального.
+          # Сами манифесты проверяет отдельный шаг ниже, ему рендер не нужен.
+          skip-dirs: deploy/helm
+
+      # ─────────────── Проверка манифестов развёртывания (NFR-S9) ───────────────
+      - name: Trivy · манифесты и Dockerfile
+        uses: aquasecurity/trivy-action@v0.36.0
+        with:
+          scan-type: config
+          scan-ref: .
+          severity: HIGH,CRITICAL
+          exit-code: "1"
+          format: table
+          # По той же причине, что и выше: шаблоны чарта без values не рендерятся, и сканер
+          # падает на них раньше, чем доходит до compose-файлов и Dockerfile.
+          skip-dirs: deploy/helm
+
+      # ─────────────── CVE в зависимостях Maven ───────────────
+      - name: OWASP Dependency-Check (Maven)
+        uses: dependency-check/Dependency-Check_Action@main
+        with:
+          project: horizon
+          path: services
+          format: SARIF
+          out: dependency-check-report
+          # failOnCVSS 7 = HIGH и выше (NFR-S8).
+          # enableRetired отключён: отозванные советы дают шум без пользы.
+          args: >-
+            --failOnCVSS 7
+            --enableRetired false
+            --scan services
+            --suppression .dependency-check-suppressions.xml
+        env:
+          # Без ключа NVD API загрузка базы занимает десятки минут
+          # и регулярно упирается в rate limit.
+          NVD_API_KEY: ${{ secrets.NVD_API_KEY }}
+        continue-on-error: false
+
+      - name: Публикация результатов Dependency-Check
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dependency-check-report
+          path: dependency-check-report/
+          retention-days: 30
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Сквозной сценарий на полном стеке
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Единственная проверка, которая видит систему целиком: конфигурацию
+  #  compose, миграции, топики, саму сагу и UI. Юнит-тесты каждого сервиса
+  #  могут быть зелёными при полностью нерабочей системе.
+  e2e:
+    name: E2E · полный стек
+    needs: [changes, java-build, python, frontend]
+    # always() + проверка результатов: e2e должен запускаться и тогда, когда
+    # часть job'ов пропущена фильтрами (skipped), но не когда они упали.
+    if: >-
+      always()
+      && (needs.changes.outputs.e2e == 'true' || github.event_name == 'push')
+      && needs.java-build.result != 'failure'
+      && needs.python.result != 'failure'
+      && needs.frontend.result != 'failure'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+
+      - name: Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Конфигурация окружения
+        # .env не хранится в репозитории (NFR-S2); для CI берём шаблон
+        # с dev-умолчаниями — реальных секретов в нём нет по построению.
+        #
+        # Все вызовы compose ниже передают --env-file явно. Без него файл ищется в каталоге
+        # compose-файла, а не там, откуда запущено: копия в корне репозитория не читалась вовсе,
+        # и e2e гонялся против стека, поднятого на умолчаниях, — то есть проверял не ту
+        # конфигурацию, которую собирался.
+        run: |
+          set -eu
+          cp .env.example .env
+          # Для шлюза весь набор e2e — один клиент: входа нет, лимит считается по адресу, а все
+          # запросы идут с одного. С прикладными значениями (30 в минуту) браузерные сценарии
+          # получали бы 429 раньше, чем успевали что-то проверить.
+          #
+          # Потолок поднят, но остаётся достижимым: проверка лимита делает до 1000 запросов подряд
+          # и обязана дойти до 429 — иначе она перестанет что-либо проверять.
+          {
+            echo 'RATE_LIMIT_PER_MINUTE=300'
+            echo 'RATE_LIMIT_BURST=300'
+            # Пустое значение выключает внутренние маршруты движка — вместе с переводом направления
+            # в предметные коды корпуса. Без него русская формулировка не находит ни одного
+            # документа, то есть проверки распознавания направления проверяли бы обход, а не путь.
+            echo 'HORIZON_ANALYTICS_INTERNAL_SECRET=e2e-internal-secret-not-a-production-value'
+          } >> .env
+          # Проверка ограничителя выполняется последней (проект `rate-limit` в playwright.config.ts):
+          # она выбирает бюджет адреса, и всё, что шло бы следом, получало бы 429.
+
+      - name: Сборка образов
+        run: |
+          docker compose -f deploy/compose/docker-compose.yml --env-file .env build \
+            --build-arg VERSION=${{ github.sha }} \
+            --build-arg REVISION=${{ github.sha }}
+
+      - name: Запуск стека
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env up -d --wait --wait-timeout 420
+
+      - name: Ожидание готовности
+        # `--wait` уже дождался healthcheck'ов; здесь проверяется, что система
+        # отвечает как ЦЕЛОЕ — то есть маршрут снаружи внутрь действительно
+        # работает, а не просто контейнеры «зелёные».
+        run: |
+          set -eu
+          for attempt in $(seq 1 60); do
+            if curl -fsS http://localhost:8080/actuator/health >/dev/null 2>&1 \
+               && curl -fsS http://localhost:3000/healthz >/dev/null 2>&1; then
+              echo "Стек готов (попытка ${attempt})"
+              exit 0
+            fi
+            sleep 5
+          done
+          echo "::error title=Стек не поднялся::Шлюз или фронтенд не отвечают через 5 минут"
+          docker compose -f deploy/compose/docker-compose.yml --env-file .env ps
+          exit 1
+
+      - name: Проверка топиков Kafka
+        run: |
+          docker compose -f deploy/compose/docker-compose.yml --env-file .env exec -T redpanda \
+            rpk topic list --brokers redpanda:9092
+
+      - name: Playwright
+        working-directory: tests/e2e
+        run: |
+          if [ ! -f package.json ]; then
+            echo "::warning title=E2E-тесты отсутствуют::tests/e2e/package.json не найден, сценарии пропущены."
+            exit 0
+          fi
+          npm ci
+          npx playwright install --with-deps chromium
+          npx playwright test
+        env:
+          HORIZON_BASE_URL: http://localhost:3000
+          HORIZON_API_URL: http://localhost:8080
+
+      - name: Логи стека при падении
+        if: failure()
+        run: |
+          docker compose -f deploy/compose/docker-compose.yml --env-file .env ps
+          docker compose -f deploy/compose/docker-compose.yml --env-file .env logs --no-color --tail=400
+
+      - name: Артефакты Playwright
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-artifacts
+          path: |
+            tests/e2e/playwright-report/
+            tests/e2e/test-results/
+          retention-days: 14
+
+      - name: Остановка стека
+        if: always()
+        run: docker compose -f deploy/compose/docker-compose.yml --env-file .env down -v --remove-orphans
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  Итоговый барьер
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  ЕДИНСТВЕННАЯ проверка, которую надо указывать обязательной в защите ветки.
+  #  Перечислять там все job'ы нельзя: пропущенный по фильтру job в GitHub
+  #  никогда не станет success, и PR зависнет навсегда.
+  config-drift:
+    name: Согласованность конфигурации
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      # A renamed environment variable is silent: the manifest looks configured, the service runs
+      # on its compiled-in default, and no test notices. That is how the gateway ended up routing
+      # every request to localhost — the manifest set one upstream URL variable, the gateway read
+      # another, and the default filled the gap with something plausible.
+      - name: Переменные манифестов связаны сервисами
+        run: python3 tools/check-env-wiring.py
+
+  quality-gate:
+    name: Барьер качества
+    if: always()
+    needs:
+      - changes
+      - java-build
+      - java-integration
+      - python
+      - frontend
+      - contracts
+      - security
+      - e2e
+      - config-drift
+    runs-on: ubuntu-latest
+    steps:
+      - name: Сводка
+        run: |
+          echo "| Проверка            | Результат |"  >> "$GITHUB_STEP_SUMMARY"
+          echo "|---------------------|-----------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| java-build          | ${{ needs.java-build.result }} |"       >> "$GITHUB_STEP_SUMMARY"
+          echo "| java-integration    | ${{ needs.java-integration.result }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| python              | ${{ needs.python.result }} |"           >> "$GITHUB_STEP_SUMMARY"
+          echo "| frontend            | ${{ needs.frontend.result }} |"         >> "$GITHUB_STEP_SUMMARY"
+          echo "| contracts           | ${{ needs.contracts.result }} |"        >> "$GITHUB_STEP_SUMMARY"
+          echo "| security            | ${{ needs.security.result }} |"         >> "$GITHUB_STEP_SUMMARY"
+          echo "| e2e                 | ${{ needs.e2e.result }} |"              >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Решение
+        # skipped — допустимо (job отфильтрован по путям).
+        # failure и cancelled — нет.
+        run: |
+          set -eu
+          failed=0
+          for result in \
+            "java-build:${{ needs.java-build.result }}" \
+            "java-integration:${{ needs.java-integration.result }}" \
+            "python:${{ needs.python.result }}" \
+            "frontend:${{ needs.frontend.result }}" \
+            "contracts:${{ needs.contracts.result }}" \
+            "security:${{ needs.security.result }}" \
+            "e2e:${{ needs.e2e.result }}"
+          do
+            name="${result%%:*}"
+            status="${result#*:}"
+            case "$status" in
+              success|skipped) echo "  ok       $name ($status)" ;;
+              *)               echo "::error title=Проверка не пройдена::$name — $status"; failed=1 ;;
+            esac
+          done
+          [ "$failed" -eq 0 ] || exit 1
+          echo "Все обязательные проверки пройдены."

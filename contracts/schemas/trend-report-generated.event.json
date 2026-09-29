@@ -1,0 +1,22 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/trend-report-generated.event.json",
+  "title": "TrendReportGenerated",
+  "type": "object",
+  "required": ["reportId", "researchRequestId", "userId", "normalizedQuery", "trendCount",
+               "methodologyVersion", "corpusSnapshotId", "generatedAt"],
+  "additionalProperties": false,
+  "properties": {
+    "reportId":          { "type": "string", "format": "uuid" },
+    "researchRequestId": { "type": "string", "format": "uuid" },
+    "userId":            { "type": "string", "format": "uuid" },
+    "organizationId":    { "type": ["string", "null"], "format": "uuid" },
+    "normalizedQuery":   { "type": "string" },
+    "trendCount":        { "type": "integer", "minimum": 0 },
+    "partial":           { "type": "boolean", "default": false },
+    "methodologyVersion":{ "type": "string" },
+    "corpusSnapshotId":  { "type": "string", "format": "uuid" },
+    "durationMs":        { "type": ["integer", "null"] },
+    "generatedAt":       { "type": "string", "format": "date-time" }
+  }
+}

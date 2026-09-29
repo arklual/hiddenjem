@@ -1,0 +1,241 @@
+# =============================================================================
+#  Horizon — значения для среды разработки (dev-кластер)
+# =============================================================================
+#  Применение:
+#      helm upgrade --install horizon deploy/helm/horizon \
+#           --namespace horizon-dev --create-namespace \
+#           -f deploy/helm/horizon/values-dev.yaml \
+#           --set global.imageTag=$GITHUB_SHA
+#
+#  Отличия от базового профиля — не «просто поменьше»: каждое из них
+#  переворачивает какой-то компромисс в другую сторону.
+# =============================================================================
+
+global:
+  environment: dev
+  domain: horizon.dev.example.bank
+  # В dev выкатывается каждый коммит, поэтому тег обязан быть уникальным
+  # (передаётся через --set), а образ — всегда перетягиваться.
+  imagePullPolicy: Always
+  commonLabels:
+    app.kubernetes.io/part-of: horizon
+    horizon.dev/tier: development
+  # DEBUG в dev: здесь ловят ошибки, а не экономят место в хранилище логов.
+  logLevel: DEBUG
+  springProfiles: k8s,dev
+
+infrastructure:
+  postgres:
+    host: postgres-rw.horizon-dev-data.svc.cluster.local
+    namespace: horizon-dev-data
+    # Внутри кластера разработки TLS к базе не обязателен; в prod — require.
+    sslMode: prefer
+    poolMaxSize: 5
+    poolMinIdle: 1
+  kafka:
+    bootstrapServers: kafka-kafka-bootstrap.horizon-dev-data.svc.cluster.local:9092
+    namespace: horizon-dev-data
+    # Один брокер — одна реплика. Иначе создание топика зависнет навсегда.
+    topicReplication: 1
+    topicPartitions: 3
+  redis:
+    host: redis-master.horizon-dev-data.svc.cluster.local
+    namespace: horizon-dev-data
+  clickhouse:
+    host: clickhouse.horizon-dev-data.svc.cluster.local
+    namespace: horizon-dev-data
+
+observability:
+  otel:
+    # 100% трейсов: в dev трафика мало, а недостающий трейс стоит дороже,
+    # чем весь объём хранения за неделю.
+    samplingRatio: "1.0"
+    namespace: observability
+  prometheus:
+    serviceMonitor:
+      enabled: true
+      interval: 30s
+
+secrets:
+  externalSecret:
+    enabled: true
+    remotePath: kv/horizon/dev
+  name: horizon-secrets
+
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    enabled: true
+    secretName: horizon-dev-tls
+    issuer: letsencrypt-staging
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-staging
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "600"
+    # В dev-кластер снаружи не ходят: доступ только из корпоративной сети.
+    nginx.ingress.kubernetes.io/whitelist-source-range: "10.0.0.0/8"
+
+networkPolicy:
+  # Политики включены и в dev НАМЕРЕННО. Если проверять изоляцию только в prod,
+  # то в prod она и сломается — на глазах у пользователей.
+  enabled: true
+  defaultDeny: true
+
+defaults:
+  # Одна реплика: dev-кластер не проверяет отказоустойчивость, он проверяет,
+  # что код работает. Отказоустойчивость проверяется chaos-тестом в staging.
+  replicas: 1
+  revisionHistoryLimit: 2
+  podDisruptionBudget:
+    # При одной реплике PDB заблокировал бы drain узла навсегда.
+    enabled: false
+  # Обновление в dev может ронять сервис на секунды — это дешевле,
+  # чем держать двойную ёмкость.
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  # Одна реплика раскладывать некуда.
+  topologySpreadConstraints: []
+  # Быстрый выкат важнее плавного вывода из ротации.
+  lifecycle:
+    preStopSleepSeconds: 0
+  probes:
+    type: http
+    liveness:
+      path: /actuator/health/liveness
+      periodSeconds: 20
+      timeoutSeconds: 5
+      failureThreshold: 5
+    readiness:
+      path: /actuator/health/readiness
+      periodSeconds: 10
+      timeoutSeconds: 5
+      failureThreshold: 5
+    startup:
+      path: /actuator/health
+      periodSeconds: 5
+      timeoutSeconds: 5
+      # Больше, чем в prod: узлы dev-кластера медленнее и делятся между командами.
+      failureThreshold: 90
+
+services:
+  gateway:
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 256Mi }
+      limits:   { cpu: 500m, memory: 512Mi }
+    hpa:
+      enabled: false
+    config:
+      SERVER_PORT: "8080"
+      # HSTS в dev выключен: staging-сертификат Let's Encrypt не доверенный,
+      # и HSTS сделает домен недоступным в браузере до истечения max-age.
+      RATE_LIMIT_PER_MINUTE: "300"
+
+  trends-service:
+    replicas: 1
+    resources:
+      requests: { cpu: 150m, memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+    hpa:
+      enabled: false
+    config:
+      SERVER_PORT: "8082"
+      # Дольше, чем в prod: на слабых узлах анализ идёт медленнее,
+      # и штатный дедлайн давал бы ложные SAGA_TIMEOUT.
+      HORIZON_SAGA_TIMEOUT: "PT20M"
+      HORIZON_SAGA_TIMEOUT_QUALITY: "PT40M"
+      HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL: "PT30S"
+      # Короткий TTL кэша: иначе после правки методологии отчёт сутки
+      # отдаётся из кэша и выглядит как «изменения не применились».
+      HORIZON_REPORT_CACHE_TTL: "PT5M"
+
+  ingestion-service:
+    replicas: 1
+    resources:
+      requests: { cpu: 150m, memory: 512Mi }
+      limits:   { cpu: 1000m, memory: 768Mi }
+    hpa:
+      enabled: false
+    config:
+      SERVER_PORT: "8083"
+      # В dev работает fixture-коннектор на golden-корпусе (ADR-0015):
+      # результаты воспроизводимы, внешние источники не нагружаются,
+      # ToS не нарушается (NFR-S12).
+      HORIZON_SOURCE_ARXIV_ENABLED: "false"
+      HORIZON_SOURCE_ALPHAXIV_ENABLED: "false"
+      HORIZON_SOURCE_OPENALEX_ENABLED: "false"
+      HORIZON_SOURCE_CROSSREF_ENABLED: "false"
+      HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN: "2000"
+      HORIZON_RAW_STORE_PATH: "/tmp/raw"
+    networkPolicy:
+      ingressFrom: [gateway]
+      egressInfra: [postgres, redis, kafka]
+      # Выход в интернет в dev не нужен: работает только fixture-коннектор.
+      egressInternet: false
+
+  analytics-api:
+    replicas: 1
+    resources:
+      requests: { cpu: 100m, memory: 384Mi }
+      limits:   { cpu: 500m, memory: 768Mi }
+    hpa:
+      enabled: false
+    config:
+      HORIZON_ANALYTICS_ROLE: "api"
+      HORIZON_ANALYTICS_PORT: "8000"
+      HORIZON_MENTION_STORE: "clickhouse"
+      HORIZON_EMBEDDING_PROVIDER: "tfidf-svd"
+      HORIZON_EMBEDDING_DIM: "384"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_LLM_ENABLED: "false"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+
+  analytics-worker:
+    replicas: 1
+    resources:
+      requests: { cpu: 200m, memory: 768Mi }
+      limits:   { cpu: 1500m, memory: 1536Mi }
+    hpa:
+      # Внешние метрики требуют prometheus-adapter; в dev его может не быть,
+      # а HPA без источника метрики висит в ScalingActive=False и путает.
+      enabled: false
+    config:
+      HORIZON_ANALYTICS_ROLE: "worker"
+      HORIZON_ANALYTICS_WORKER_CONCURRENCY: "1"
+      HORIZON_WORKER_LIVENESS_FILE: "/tmp/worker-alive"
+      HORIZON_MENTION_STORE: "clickhouse"
+      HORIZON_EMBEDDING_PROVIDER: "tfidf-svd"
+      HORIZON_EMBEDDING_DIM: "384"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_LLM_ENABLED: "false"
+      OMP_NUM_THREADS: "2"
+      OPENBLAS_NUM_THREADS: "2"
+      MKL_NUM_THREADS: "2"
+    writableVolumes:
+      - name: tmp
+        mountPath: /tmp
+        sizeLimit: 512Mi
+
+  frontend:
+    replicas: 1
+    resources:
+      requests: { cpu: 25m, memory: 48Mi }
+      limits:   { cpu: 100m, memory: 96Mi }
+    probes:
+      type: http
+      liveness:  { path: /healthz, periodSeconds: 20, timeoutSeconds: 3, failureThreshold: 3 }
+      readiness: { path: /healthz, periodSeconds: 10, timeoutSeconds: 3, failureThreshold: 3 }
+      startup:   { path: /healthz, periodSeconds: 3,  timeoutSeconds: 2, failureThreshold: 20 }
+    config:
+      NGINX_PORT: "8080"
+      HORIZON_API_TIMEOUT: "120s"
+      # HSTS выключен: см. комментарий у gateway.
+      HORIZON_HSTS_DIRECTIVE: ""

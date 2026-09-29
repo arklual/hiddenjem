@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Логирование trends-service.
+
+  Вся конфигурация appender'ов и формата — в общем модуле: единый формат логов во всех
+  сервисах является предусловием их корреляции по traceId (ADR-0013, NFR-O2). Здесь
+  остаются только уровни, специфичные для этого сервиса.
+-->
+<configuration>
+  <include resource="horizon-logback.xml"/>
+
+  <!-- Сага — основной диагностируемый процесс: её переходы нужны на INFO даже в проде. -->
+  <logger name="dev.horizon.trends.application.saga" level="INFO"/>
+
+  <!-- Промахи кэша и fail-open квот пишутся на WARN и не должны тонуть в отладке Lettuce. -->
+  <logger name="io.lettuce.core" level="WARN"/>
+  <logger name="org.springframework.data.redis" level="WARN"/>
+
+  <!-- Ожидаемый шум при старте до появления топиков. -->
+  <logger name="org.apache.kafka.clients.NetworkClient" level="ERROR"/>
+  <logger name="org.apache.kafka.clients.consumer.internals" level="WARN"/>
+
+  <!-- Flyway перечисляет каждую миграцию на INFO — полезно ровно один раз при старте. -->
+  <logger name="org.flywaydb.core.internal" level="WARN"/>
+</configuration>

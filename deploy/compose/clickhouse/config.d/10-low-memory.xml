@@ -1,0 +1,62 @@
+<?xml version="1.0"?>
+<!--
+  =============================================================================
+   ClickHouse — профиль для локального запуска в контейнере с лимитом ~1 ГБ
+  =============================================================================
+   Зачем это нужно. ClickHouse определяет доступную память по /proc/meminfo,
+   то есть по ОЗУ ХОСТА, а не по лимиту cgroup контейнера. На ноутбуке с 16 ГБ
+   он посчитает, что ему можно занять ~14 ГБ, спокойно выйдет за лимит 1 ГБ
+   и будет убит OOM killer — с диагностикой «контейнер просто перезапустился».
+
+   Файл монтируется в /etc/clickhouse-server/config.d/ и переопределяет
+   соответствующие ключи основного config.xml.
+
+   В Kubernetes эти же значения задаются через values.yaml и должны быть
+   согласованы с resources.limits.memory.
+  =============================================================================
+-->
+<clickhouse>
+    <!-- Потолок памяти всего сервера. Согласован с CLICKHOUSE_MEM_LIMIT=1g
+         в .env: оставляем ~25% на кэши вне учёта и на пики слияний. -->
+    <max_server_memory_usage>768000000</max_server_memory_usage>
+    <max_server_memory_usage_to_ram_ratio>0.7</max_server_memory_usage_to_ram_ratio>
+
+    <!-- Кэш засечек и несжатых блоков: дефолт (5 ГБ) в наш бюджет не влезает. -->
+    <mark_cache_size>134217728</mark_cache_size>
+    <uncompressed_cache_size>134217728</uncompressed_cache_size>
+
+    <!-- Локально нагрузка однопоточная; каждый лишний фоновый поток — это стек
+         и буферы, которых у нас нет. -->
+    <background_pool_size>4</background_pool_size>
+    <background_schedule_pool_size>4</background_schedule_pool_size>
+    <background_merges_mutations_concurrency_ratio>2</background_merges_mutations_concurrency_ratio>
+    <max_concurrent_queries>16</max_concurrent_queries>
+
+    <!-- Без явного адреса сервер слушает только петлю: проверка здоровья ходит в 127.0.0.1
+         и потому этого не видит, а соседние контейнеры получают отказ. -->
+    <listen_host>0.0.0.0</listen_host>
+
+    <!-- Пул уменьшен выше, поэтому пороги мутаций и слияний обязаны быть меньше
+         background_pool_size * concurrency_ratio (4*2=8): иначе сервер не стартует. -->
+    <merge_tree>
+        <number_of_free_entries_in_pool_to_execute_mutation>2</number_of_free_entries_in_pool_to_execute_mutation>
+        <number_of_free_entries_in_pool_to_lower_max_size_of_merge>2</number_of_free_entries_in_pool_to_lower_max_size_of_merge>
+        <number_of_free_entries_in_pool_to_execute_optimize_entire_partition>2</number_of_free_entries_in_pool_to_execute_optimize_entire_partition>
+    </merge_tree>
+
+    <!-- Логи в stdout контейнера: файловый лог внутри контейнера всё равно
+         никто не читает, а место он занимает. -->
+    <logger>
+        <level>warning</level>
+        <console>1</console>
+    </logger>
+
+    <profiles>
+        <default>
+            <!-- Один запрос не должен уносить весь сервер. -->
+            <max_memory_usage>536870912</max_memory_usage>
+            <max_bytes_before_external_group_by>268435456</max_bytes_before_external_group_by>
+            <max_threads>2</max_threads>
+        </default>
+    </profiles>
+</clickhouse>

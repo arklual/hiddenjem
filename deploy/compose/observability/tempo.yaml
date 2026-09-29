@@ -1,0 +1,78 @@
+# =============================================================================
+#  Grafana Tempo — хранилище трейсов (NFR-O1)
+# =============================================================================
+#  Локальная конфигурация: одиночный процесс, файловое хранилище, короткое
+#  удержание. В Kubernetes тот же Tempo разворачивается в микросервисном режиме
+#  с объектным хранилищем — меняется только блок `storage`.
+#
+#  Приложения пишут НЕ сюда напрямую, а в otel-collector: он единственный, кто
+#  знает адрес бэкенда трассировки. Приёмник OTLP ниже нужен именно для него.
+# =============================================================================
+
+# Позволяет Grafana тянуть трейс потоком, не дожидаясь сборки целиком —
+# заметно приятнее на трейсах саги, которая длится десятки секунд.
+stream_over_http_enabled: true
+
+server:
+  http_listen_port: 3200
+  grpc_listen_port: 9095
+  log_level: warn
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+          endpoint: 0.0.0.0:4317
+        http:
+          endpoint: 0.0.0.0:4318
+
+ingester:
+  # Блок закрывается раз в 5 минут: свежие трейсы становятся доступны для
+  # поиска быстро. В проде значение выше — там важнее размер блока.
+  max_block_duration: 5m
+
+compactor:
+  compaction:
+    # Локально держим двое суток: этого хватает, чтобы разобрать вчерашний
+    # неудачный прогон, и не хватает, чтобы забить диск разработчика.
+    block_retention: 48h
+    compacted_block_retention: 1h
+
+metrics_generator:
+  # Генератор строит RED-метрики и граф сервисов ИЗ трейсов. Это единственный
+  # способ увидеть реальную топологию вызовов, включая асинхронные переходы
+  # через Kafka, — по метрикам приложений она не восстанавливается.
+  registry:
+    external_labels:
+      source: tempo
+      cluster: horizon-local
+  storage:
+    path: /var/tempo/generator/wal
+    remote_write:
+      # Требует у Prometheus флага --web.enable-remote-write-receiver
+      # (он задан в docker-compose.yml). Если приёмник выключен, Tempo
+      # продолжит отдавать трейсы и будет писать в лог ошибки записи метрик.
+      - url: http://prometheus:9090/api/v1/write
+        send_exemplars: true
+  traces_storage:
+    path: /var/tempo/generator/traces
+
+storage:
+  trace:
+    backend: local
+    wal:
+      path: /var/tempo/wal
+    local:
+      path: /var/tempo/blocks
+
+overrides:
+  defaults:
+    metrics_generator:
+      processors:
+        - service-graphs
+        - span-metrics
+      # Гистограммы в нативном формате занимают меньше места и дают
+      # произвольные квантили; классические оставлены для совместимости
+      # с правилами алертов, написанными под histogram_quantile.
+      generate_native_histograms: both

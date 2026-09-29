@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/failure.event.json",
+  "title": "Failure",
+  "description": "Общая форма события неуспеха для любого шага саги",
+  "type": "object",
+  "required": ["researchRequestId", "attempt", "code", "message", "retryable"],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId": { "type": "string", "format": "uuid" },
+    "attempt":           { "type": "integer", "minimum": 1 },
+    "code":              { "type": "string", "maxLength": 48 },
+    "message":           { "type": "string", "maxLength": 2000 },
+    "retryable":         { "type": "boolean" },
+    "details":           { "type": "object" }
+  }
+}

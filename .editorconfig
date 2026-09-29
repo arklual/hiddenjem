@@ -1,0 +1,84 @@
+# EditorConfig — единый стиль вне зависимости от IDE (NFR-M6).
+# https://editorconfig.org
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+max_line_length = 120
+
+# ─────────────────────────────── Java ───────────────────────────────
+# Palantir Java Format (Spotless) — 4 пробела, 120 колонок.
+[*.java]
+indent_size = 4
+max_line_length = 120
+
+[*.{xml,pom}]
+indent_size = 2
+max_line_length = off
+
+[pom.xml]
+indent_size = 2
+
+# ─────────────────────────────── Python ───────────────────────────────
+# Black — 4 пробела, 100 колонок (совпадает с ruff line-length).
+[*.py]
+indent_size = 4
+max_line_length = 100
+
+[*.{pyi,pyx}]
+indent_size = 4
+
+# ─────────────────────────────── TypeScript / JS ───────────────────────────────
+[*.{ts,tsx,js,jsx,mjs,cjs,css,scss,html}]
+indent_size = 2
+max_line_length = 100
+
+# ─────────────────────────────── Конфигурация ───────────────────────────────
+[*.{yml,yaml}]
+indent_size = 2
+max_line_length = off
+
+[*.json]
+indent_size = 2
+max_line_length = off
+
+# Grafana-дашборды экспортируются самим Grafana — не переформатируем.
+[deploy/compose/observability/grafana/dashboards/*.json]
+trim_trailing_whitespace = false
+insert_final_newline = true
+
+[*.{toml,ini,cfg,properties}]
+indent_size = 4
+
+[*.sql]
+indent_size = 2
+max_line_length = off
+
+# ─────────────────────────────── Скрипты и Make ───────────────────────────────
+[*.{sh,bash}]
+indent_size = 2
+switch_case_indent = true
+
+# Makefile требует табов — это не стилистический выбор.
+[{Makefile,*.mk,makefile}]
+indent_style = tab
+indent_size = 4
+
+[Dockerfile*]
+indent_size = 4
+
+[*.md]
+# Два пробела в конце строки в Markdown — значащий перенос.
+trim_trailing_whitespace = false
+max_line_length = off
+
+# ─────────────────────────────── Данные, которые нельзя трогать ───────────────────────────────
+# Golden-корпус хеширован; любая нормализация ломает проверку в CI.
+[fixtures/**]
+insert_final_newline = false
+trim_trailing_whitespace = false

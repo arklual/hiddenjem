@@ -1,0 +1,32 @@
+<?xml version='1.0' encoding='UTF-8'?>
+<feed xmlns:opensearch="http://a9.com/-/spec/opensearch/1.1/" xmlns:arxiv="http://arxiv.org/schemas/atom" xmlns="http://www.w3.org/2005/Atom">
+  <id>https://arxiv.org/api/II6GVibjSFz/IYfWdxW7xFgWm9A</id>
+  <title>arXiv Query: search_query=all:"speculative decoding" AND submittedDate:"202401010000 TO 202412312359"&amp;id_list=&amp;start=0&amp;max_results=1</title>
+  <updated>2026-09-19T20:49:22Z</updated>
+  <link href="https://arxiv.org/api/query?search_query=all:%22speculative+decoding%22+AND+submittedDate:%22202401010000+TO+202412312359%22&amp;start=0&amp;max_results=1&amp;id_list=" type="application/atom+xml"/>
+  <opensearch:itemsPerPage>1</opensearch:itemsPerPage>
+  <opensearch:totalResults>109</opensearch:totalResults>
+  <opensearch:startIndex>0</opensearch:startIndex>
+  <entry>
+    <id>http://arxiv.org/abs/2402.01528v4</id>
+    <title>Decoding Speculative Decoding</title>
+    <updated>2025-02-05T03:17:28Z</updated>
+    <link href="https://arxiv.org/abs/2402.01528v4" rel="alternate" type="text/html"/>
+    <link href="https://arxiv.org/pdf/2402.01528v4" rel="related" type="application/pdf" title="pdf"/>
+    <summary>Speculative Decoding is a widely used technique to speed up inference for Large Language Models (LLMs) without sacrificing quality. When performing inference, speculative decoding uses a smaller draft model to generate speculative tokens and then uses the target LLM to verify those draft tokens. The speedup provided by speculative decoding heavily depends on the choice of the draft model. In this work, we perform a detailed study comprising over 350 experiments with LLaMA-65B and OPT-66B using speculative decoding and delineate the factors that affect the performance gain provided by speculative decoding. Our experiments indicate that the performance of speculative decoding depends heavily on the latency of the draft model, and the draft model's capability in language modeling does not correlate strongly with its performance in speculative decoding. Based on these insights we explore a new design space for draft models and design hardware-efficient draft models for speculative decoding. Our newly designed draft model can provide 111% higher throughput than existing draft models and our approach generalizes further to all LLaMA models (1/2/3.1) and supervised fine-tuned models.</summary>
+    <category term="cs.LG" scheme="http://arxiv.org/schemas/atom"/>
+    <category term="cs.CL" scheme="http://arxiv.org/schemas/atom"/>
+    <published>2024-02-02T16:15:24Z</published>
+    <arxiv:comment>Proceedings of the 2025 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (NAACL 2025)</arxiv:comment>
+    <arxiv:primary_category term="cs.LG"/>
+    <author>
+      <name>Minghao Yan</name>
+    </author>
+    <author>
+      <name>Saurabh Agarwal</name>
+    </author>
+    <author>
+      <name>Shivaram Venkataraman</name>
+    </author>
+  </entry>
+</feed>

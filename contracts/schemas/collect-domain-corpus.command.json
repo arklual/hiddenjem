@@ -1,0 +1,34 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/collect-domain-corpus.command.json",
+  "title": "CollectDomainCorpus",
+  "type": "object",
+  "required": ["researchRequestId", "attempt", "query", "normalizedQuery", "windowFrom", "windowTo"],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId": { "type": "string", "format": "uuid" },
+    "attempt":           { "type": "integer", "minimum": 1 },
+    "query":             { "type": "string", "minLength": 1, "maxLength": 200 },
+    "normalizedQuery":   { "type": "string", "minLength": 1, "maxLength": 200 },
+    "queryLanguage":     { "type": ["string", "null"], "maxLength": 2 },
+    "windowFrom":        { "type": "string", "format": "date" },
+    "windowTo":          { "type": "string", "format": "date" },
+    "sourceClasses": {
+      "type": "array",
+      "items": { "enum": ["PREPRINT","JOURNAL_ARTICLE","PATENT","CODE_REPOSITORY","NEWS","ANALYST_REPORT","STANDARD"] },
+      "description": "Пустой массив — все включённые источники"
+    },
+    "maxDocuments": { "type": "integer", "minimum": 100, "maximum": 100000, "default": 5000 },
+    "mode": {
+      "enum": ["fast", "quality"],
+      "default": "fast",
+      "description": "Режим анализа: `fast` укладывает весь анализ в 20 минут, `quality` — в 40. Сбор выбирает по нему бюджеты источников (прежде всего глубокого исследования). Отсутствие — `fast`, как было до появления поля."
+    },
+    "subjectTargets": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1, "maxLength": 120 },
+      "maxItems": 64,
+      "description": "Предметные коды корпуса для этого направления: результат перекрёстного словаря движка (например, «искусственный интеллект» → artificial intelligence, machine learning, cs.AI). Сбор ищет по ним наравне со словами запроса. Поле необязательное: без него сбор идёт только по словам запроса — так было до появления шага, и так остаётся, если движок недоступен."
+    }
+  }
+}

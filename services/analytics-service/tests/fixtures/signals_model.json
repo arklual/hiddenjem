@@ -1,0 +1,127 @@
+{
+  "schema": "horizon.signals-model/1",
+  "version": "fixture-0.0.0",
+  "trained_on": "2026-09-19",
+  "link": "logistic",
+  "bias": -0.35,
+  "features": [
+    {
+      "name": "corpus.documents",
+      "weight": 0.45,
+      "transform": "log1p",
+      "center": 2.6,
+      "scale": 1.1
+    },
+    {
+      "name": "corpus.documents_last_year",
+      "weight": 0.3,
+      "transform": "log1p",
+      "center": 1.4,
+      "scale": 0.9
+    },
+    {
+      "name": "corpus.recent_two_year_share",
+      "weight": 0.8,
+      "transform": "identity",
+      "center": 0.35,
+      "scale": 0.2
+    },
+    {
+      "name": "corpus.growth_slope",
+      "weight": 0.6,
+      "transform": "signed_log1p",
+      "center": 0.2,
+      "scale": 0.35
+    },
+    {
+      "name": "openalex.works_window_total",
+      "weight": -0.35,
+      "transform": "log1p",
+      "center": 5.2,
+      "scale": 2.1
+    },
+    {
+      "name": "openalex.works_last_year",
+      "weight": 0.25,
+      "transform": "log1p",
+      "center": 3.4,
+      "scale": 1.6
+    },
+    {
+      "name": "openalex.recent_two_year_share",
+      "weight": 0.9,
+      "transform": "identity",
+      "center": 0.38,
+      "scale": 0.22
+    },
+    {
+      "name": "openalex.distinct_institutions",
+      "weight": -0.2,
+      "transform": "log1p",
+      "center": 3.9,
+      "scale": 1.5
+    },
+    {
+      "name": "openalex.top_institution_share",
+      "weight": 0.4,
+      "transform": "identity",
+      "center": 0.12,
+      "scale": 0.1
+    },
+    {
+      "name": "hackernews.mentions_window_total",
+      "weight": 0.15,
+      "transform": "log1p",
+      "center": 1.8,
+      "scale": 1.4
+    },
+    {
+      "name": "hackernews.mentions_last_year",
+      "weight": 0.2,
+      "transform": "log1p",
+      "center": 0.9,
+      "scale": 1.0
+    },
+    {
+      "name": "hackernews.recent_two_year_share",
+      "weight": 0.35,
+      "transform": "identity",
+      "center": 0.45,
+      "scale": 0.3
+    },
+    {
+      "name": "wikipedia.exists",
+      "weight": -0.3,
+      "transform": "identity",
+      "center": 0.4,
+      "scale": 0.49
+    },
+    {
+      "name": "wikipedia.age_days",
+      "weight": -0.55,
+      "transform": "log1p",
+      "center": 6.5,
+      "scale": 2.4
+    },
+    {
+      "name": "wikipedia.size_bytes",
+      "weight": -0.25,
+      "transform": "log1p",
+      "center": 9.3,
+      "scale": 2.0
+    },
+    {
+      "name": "wikipedia.pageviews_12m",
+      "weight": -0.15,
+      "transform": "log1p",
+      "center": 8.1,
+      "scale": 3.0
+    }
+  ],
+  "holdout": {
+    "metric": "roc_auc",
+    "value": 0.5,
+    "size": 0,
+    "note": "фикстура тестов, а не обученная модель: веса выбраны руками, метрика равна случайной"
+  }
+}

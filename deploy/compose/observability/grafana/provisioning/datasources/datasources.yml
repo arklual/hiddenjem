@@ -1,0 +1,69 @@
+# =============================================================================
+#  Grafana — источники данных как код (NFR-O2)
+# =============================================================================
+#  Источники НЕ настраиваются руками в UI: настройка, которой нет в репозитории,
+#  теряется при первом же пересоздании контейнера и не воспроизводится у коллеги.
+#
+#  uid зафиксированы (`prometheus`, `tempo`), потому что на них ссылаются
+#  дашборды в grafana/dashboards/*.json. Сгенерированный uid сломал бы их.
+# =============================================================================
+apiVersion: 1
+
+# Удаляем источники, которых больше нет в этом файле: иначе в UI годами живут
+# «datasource-призраки» от старых экспериментов.
+deleteDatasources:
+  - name: Loki
+    orgId: 1
+
+datasources:
+
+  - name: Prometheus
+    uid: prometheus
+    type: prometheus
+    access: proxy
+    url: http://prometheus:9090
+    isDefault: true
+    editable: false
+    jsonData:
+      httpMethod: POST
+      # Совпадает с global.scrape_interval: Grafana не станет запрашивать
+      # точки чаще, чем они появляются.
+      timeInterval: 15s
+      # Exemplar'ы связывают точку на графике с конкретным трейсом:
+      # «вот этот всплеск p99 — вот его трейс».
+      exemplarTraceIdDestinations:
+        - name: trace_id
+          datasourceUid: tempo
+          urlDisplayLabel: "Открыть трейс"
+
+  - name: Tempo
+    uid: tempo
+    type: tempo
+    access: proxy
+    url: http://tempo:3200
+    editable: false
+    jsonData:
+      # Граф сервисов строится из метрик, которые Tempo сам пишет
+      # в Prometheus через remote_write (см. tempo.yaml, metrics_generator).
+      serviceMap:
+        datasourceUid: prometheus
+      nodeGraph:
+        enabled: true
+      tracesToMetrics:
+        datasourceUid: prometheus
+        tags:
+          - key: service.name
+            value: service
+        queries:
+          - name: "RPS этого сервиса"
+            query: 'sum(rate(http_server_requests_seconds_count{$$__tags}[5m]))'
+          - name: "Доля ошибок"
+            query: 'sum(rate(http_server_requests_seconds_count{$$__tags,status=~"5.."}[5m]))'
+      # Поиск по TraceQL включён: без него разбор саги превращается
+      # в перебор идентификаторов руками.
+      search:
+        hide: false
+      lokiSearch:
+        # Loki в локальном стеке нет (логи читаются `make logs`).
+        # Блок оставлен явно выключенным, чтобы UI не предлагал битую вкладку.
+        datasourceUid: ""

@@ -1,0 +1,255 @@
+name: deploy-stand
+
+# Раскатка на демонстрационный стенд (docker compose на одной машине).
+#
+# Зачем отдельно от release.yml. Тот выпускает версию по тегу и раскатывает её Helm-ом в кластер —
+# это про промышленный контур, которого пока нет. Здесь другое: единственный стенд, поднятый через
+# docker compose, который обязан обновляться сам при каждом изменении master. Смешивать их в одном
+# файле значило бы связать выпуск версии с обновлением стенда — они происходят в разном ритме и по
+# разным поводам.
+#
+# Почему workflow_run, а не push. Стенд обновляется только тем, что прошло гейт: раскатывать
+# непроверенный master значит гарантированно однажды выкатить сломанное. Триггер ждёт успешного
+# завершения CI **на master** и берёт ровно тот коммит, который CI проверял, — не «последний
+# master», потому что за время сборки он мог уехать.
+#
+# Ручной запуск оставлен для случая «стенд лёг сам»: перезапуск без нового коммита.
+
+on:
+  # ВРЕМЕННО: CI на пуш в master отключён, поэтому workflow_run по нему не приходит и стенд
+  # без этого триггера не обновлялся бы вовсе. Раскатка теперь идёт с непроверенного master —
+  # это осознанная плата за отключённый гейт, а не недосмотр. Удалить вместе с возвратом
+  # push-триггера в ci.yml.
+  push:
+    branches: [master]
+  workflow_run:
+    workflows: [CI]
+    types: [completed]
+    branches: [master]
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Что сделать со стендом'
+        required: true
+        default: deploy
+        type: choice
+        options: [deploy, restart, status]
+
+permissions:
+  contents: read
+
+concurrency:
+  # Одна машина — одна раскатка. Отменять на полпути нельзя: остановленный посередине
+  # `compose up` оставляет стенд в состоянии, которого нет ни в одном коммите.
+  group: deploy-stand
+  cancel-in-progress: false
+
+env:
+  REMOTE_DIR: /opt/horizon
+  COMPOSE_DIR: /opt/horizon/deploy/compose
+  ENV_FILE: /opt/horizon/.env
+
+jobs:
+  deploy:
+    name: Стенд
+    # Свой раннер на самом стенде (служба actions.runner.*.horizon-stand, пользователь
+    # github-runner): облачные раннеры GitHub встали из-за оплаты аккаунта, а раскатке всё равно
+    # нужна только эта машина. Заходит на неё тем же ssh, что и прежде, — без прав root у раннера.
+    runs-on: [self-hosted, stand]
+    # Ручной запуск проходит всегда; автоматический — только после зелёного CI.
+    if: >
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 45
+    steps:
+      - name: Код проверенного коммита
+        uses: actions/checkout@v4
+        with:
+          # Для workflow_run — тот самый коммит, который прошёл проверки. Для ручного запуска —
+          # то, что выбрал человек.
+          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+
+      - name: Доступ к стенду
+        env:
+          KEY: ${{ secrets.STAND_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.STAND_KNOWN_HOSTS }}
+        run: |
+          set -eu
+          if [ -z "${KEY:-}" ] || [ -z "${KNOWN_HOSTS:-}" ]; then
+            echo "::error title=Стенд не настроен::Задайте секреты STAND_SSH_KEY, STAND_KNOWN_HOSTS, STAND_HOST, STAND_USER"
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$KEY" > ~/.ssh/stand
+          chmod 600 ~/.ssh/stand
+          # Ключ хоста закреплён, а не принимается на веру: StrictHostKeyChecking=no означает
+          # «раскатать что угодно куда угодно», и это ровно та дыра, ради которой пишут CI/CD.
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/known_hosts
+          # Перезапись, а не дописывание: раннер постоянный, и `>>` копил бы блок на каждый запуск.
+          cat > ~/.ssh/config <<'CONF'
+          Host stand
+            User ${{ secrets.STAND_USER }}
+            HostName ${{ secrets.STAND_HOST }}
+            IdentityFile ~/.ssh/stand
+            IdentitiesOnly yes
+            BatchMode yes
+            ServerAliveInterval 30
+          CONF
+          chmod 600 ~/.ssh/config
+          ssh stand 'echo подключение установлено'
+
+      - name: Проверка окружения стенда
+        run: |
+          set -eu
+          # .env на стенде — единственное, чего нет в репозитории: пароли, ключи, адреса. Раскатка
+          # обновляет в нём только дополнительные ключи OpenAlex. Если файла нет, лучше остановиться с внятным
+          # сообщением, чем поднять стек на умолчаниях и гадать, почему redis без пароля.
+          ssh stand 'test -f ${{ env.ENV_FILE }}' || {
+            echo "::error title=Нет ${{ env.ENV_FILE }}::Заполните его на стенде по .env.example — раскатка секреты не создаёт"
+            exit 1
+          }
+
+      - name: Дополнительные ключи OpenAlex
+        if: github.event.inputs.action != 'status'
+        env:
+          OPENALEX_KEYS: ${{ secrets.HORIZON_OPENALEX_API_KEYS }}
+        run: |
+          set -eu
+          if [ -z "$OPENALEX_KEYS" ]; then
+            # Секрет не задан — ключи в .env стенда остаются как есть.
+            echo "::notice title=Ключи OpenAlex::Секрет HORIZON_OPENALEX_API_KEYS не задан — .env стенда не меняется"
+            exit 0
+          fi
+          # На стенде уже есть первый ключ. Обновляем только дополнительные, не печатая их и
+          # не заменяя остальные переменные .env. Compose читает этот файл при каждом up.
+          printf '%s' "$OPENALEX_KEYS" | ssh stand '
+            set -eu
+            env_file=/opt/horizon/.env
+            tmp=$(mktemp /opt/horizon/.env.openalex.XXXXXX)
+            trap "rm -f $tmp" EXIT
+            sed "/^HORIZON_OPENALEX_API_KEYS=/d" "$env_file" > "$tmp"
+            keys=$(cat)
+            test -n "$keys"
+            printf "HORIZON_OPENALEX_API_KEYS=%s\n" "$keys" >> "$tmp"
+            chmod 600 "$tmp"
+            mv "$tmp" "$env_file"
+            trap - EXIT
+          '
+
+      - name: Остановка
+        if: github.event.inputs.action == 'restart'
+        run: ssh stand 'cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} down --remove-orphans'
+
+      - name: Синхронизация кода
+        if: github.event.inputs.action != 'status'
+        run: |
+          set -eu
+          # --delete: стенд обязан быть копией коммита, а не его наслоением. Исключается всё, что
+          # либо собирается на месте, либо принадлежит стенду (.env) и потому переживает раскатку.
+          rsync -az --delete \
+            --exclude '.git' --exclude 'node_modules' --exclude '.venv' \
+            --exclude 'target' --exclude 'dist' --exclude 'build' --exclude '.gradle' \
+            --exclude '.env' \
+            -e 'ssh' ./ stand:${{ env.REMOTE_DIR }}/
+
+      - name: Модель второго движка
+        if: github.event.inputs.action != 'status'
+        run: |
+          set -eu
+          # Артефакт обученной модели живёт на машине, а не в образе: он переобучается отдельно от
+          # выпуска кода. Но стенд, переустановленный с нуля, не должен оставаться без движка —
+          # поэтому раскатка кладёт обученную версию из репозитория, если своей на машине нет.
+          # Каталог принадлежит пользователю контейнера (10001): иначе движок не сможет писать кэш
+          # признаков и молча останется без них — так уже было, разбор 97.
+          ssh stand 'mkdir -p /opt/horizon-signals/cache             && [ -f /opt/horizon-signals/model.json ]             || cp ${{ env.REMOTE_DIR }}/services/analytics-service/src/horizon_analytics/resources/signals-model.json /opt/horizon-signals/model.json;             chown -R 10001:10001 /opt/horizon-signals'
+
+      - name: Сборка образов
+        if: github.event.inputs.action != 'status'
+        run: |
+          set -eu
+          ssh stand 'cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} build'
+
+      - name: Запуск
+        if: github.event.inputs.action != 'status'
+        run: |
+          set -eu
+          # --remove-orphans: контейнер удалённой из compose службы иначе остаётся жить и
+          # продолжает отвечать, изображая работающую часть продукта, которой уже нет.
+          ssh stand 'cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} up -d --remove-orphans'
+
+      - name: Ожидание готовности
+        run: |
+          set -eu
+          # Ждём, пока каждая служба с проверкой здоровья её пройдёт. Без ожидания дымовая проверка
+          # ниже стучится в ещё не поднявшийся стек и «находит» отказ, которого нет.
+          for attempt in $(seq 1 60); do
+            state=$(ssh stand 'cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} ps --format "{{.Service}} {{.Status}}"')
+            if ! printf '%s\n' "$state" | grep -qE 'starting|Restarting|Exit'; then
+              echo "$state"
+              echo "стенд готов (попытка $attempt)"
+              exit 0
+            fi
+            sleep 10
+          done
+          echo "::error title=Стенд не поднялся::Службы не пришли в здоровое состояние за 10 минут"
+          printf '%s\n' "$state"
+          exit 1
+
+      - name: Дымовая проверка
+        if: github.event.inputs.action != 'status'
+        run: |
+          set -eu
+          # Проверяется путь целиком, тем же ходом, каким идёт браузер: интерфейс проксирует /api
+          # на шлюз. Зелёные проверки здоровья этого не доказывают — служба бывает здорова и при
+          # этом недостижима снаружи (так уже было: ClickHouse слушал только петлю).
+          #
+          # Порт интерфейса — из .env самого стенда, а не константой. Стенд делит машину с чужими
+          # службами, и порт у него свой (на 2.27.20.14 — 18081, потому что 80, 443 и 8080 заняты);
+          # проверка на 3000 стучалась бы в пустоту или, хуже, в чужой сервис.
+          PORT=$(ssh stand "grep -E '^FRONTEND_PORT=' ${{ env.ENV_FILE }} | tail -1 | cut -d= -f2" || true)
+          WEB="http://127.0.0.1:${PORT:-3000}"
+          echo "интерфейс стенда: ${WEB}"
+          ssh stand "curl -fsS -o /dev/null -w 'интерфейс: %{http_code}\n' ${WEB}/"
+
+          # Один запрос к продукту через интерфейс и шлюз: это доказывает, что прокси, шлюз и
+          # trends-service согласованы между собой, — а именно рассогласование между ними и
+          # переживает сборку. Входа в продукте нет, публичный API открыт, поэтому запрос идёт без
+          # заголовка Authorization и обязан вернуть 200.
+          code=$(ssh stand "curl -sS -o /dev/null -w '%{http_code}' ${WEB}/api/v1/research-requests/quota" || true)
+          echo "квота: ${code}"
+          if [ "${code}" != "200" ]; then
+            echo "::error title=Продукт недоступен::GET /api/v1/research-requests/quota без авторизации вернул ${code}, ожидалось 200"
+            exit 1
+          fi
+
+          # Не выводим ключи или полный ответ; проверяем, что Compose передал все шесть.
+          ssh stand "curl -fsS ${WEB}/api/v1/sources/openalex/quota" | python3 -c '
+          import json, sys
+          quota = json.load(sys.stdin)
+          configured = quota["keysConfigured"]
+          checked = quota["keysChecked"]
+          print(f"OpenAlex: настроено {configured}, проверено {checked}")
+          if configured != 6:
+              raise SystemExit("ожидалось шесть ключей OpenAlex на стенде")
+          '
+
+      - name: Что на стенде сейчас
+        if: always()
+        run: |
+          set +e
+          ssh stand 'cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} ps --format "{{.Service}}\t{{.Status}}"' | sort | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Журналы упавших служб
+        if: failure()
+        run: |
+          set +e
+          # Без этого разбор отказа снова требует руки на сервере — то есть ровно того, ради отказа
+          # от чего этот процесс и написан.
+          bad=$(ssh stand 'cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} ps --format "{{.Service}} {{.Status}}"' \
+                | grep -Ev 'healthy|Up ' | awk '{print $1}')
+          for service in $bad; do
+            echo "── $service ──────────────────────────────"
+            ssh stand "cd ${{ env.COMPOSE_DIR }} && docker compose --env-file ${{ env.ENV_FILE }} logs --tail 120 $service"
+          done

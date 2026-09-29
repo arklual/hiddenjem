@@ -1,0 +1,46 @@
+{{/*
+=============================================================================
+  PodDisruptionBudget
+=============================================================================
+  Защищает от ДОБРОВОЛЬНЫХ прерываний: drain узла при обновлении кластера,
+  переезд подов, работа cluster-autoscaler. Без PDB рутинное обслуживание
+  узлов способно одновременно выселить все реплики сервиса — и это выглядит
+  как авария, хотя формально всё «по плану».
+
+  maxUnavailable: 1, а не minAvailable: N. Причина: HPA меняет число реплик,
+  и minAvailable, посчитанный от значения в values, при масштабировании вниз
+  начинает блокировать любое выселение (PDB считает нарушением уже текущее
+  состояние). maxUnavailable остаётся корректным при любом числе реплик.
+=============================================================================
+*/}}
+{{- $root := . -}}
+{{- range $name, $rawSvc := .Values.services }}
+{{- if $rawSvc.enabled }}
+{{- $svc := include "horizon.svc" (dict "root" $root "svc" $rawSvc) | fromYaml }}
+{{- if $svc.podDisruptionBudget.enabled }}
+{{- $ctx := dict "root" $root "name" $name "svc" $svc }}
+{{- $minReplicas := ternary (int $svc.hpa.minReplicas) (int $svc.replicas) $svc.hpa.enabled }}
+{{- /* PDB на одной реплике заблокировал бы drain узла навсегда: выселить
+       единственный под нельзя, а создать новый до выселения — некуда.
+       Поэтому для одиночных нагрузок бюджет не создаётся. */}}
+{{- if gt $minReplicas 1 }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "horizon.workloadName" $ctx }}
+  namespace: {{ $root.Release.Namespace }}
+  labels:
+    {{- include "horizon.commonLabels" $ctx | nindent 4 }}
+spec:
+  maxUnavailable: {{ $svc.podDisruptionBudget.maxUnavailable }}
+  selector:
+    matchLabels:
+      {{- include "horizon.selectorLabels" $ctx | nindent 6 }}
+  {{- /* Поды, которые сами по себе нездоровы, не должны мешать drain:
+         иначе один зависший под держит узел в обслуживании бесконечно. */}}
+  unhealthyPodEvictionPolicy: AlwaysAllow
+{{- end }}
+{{- end }}
+{{- end }}
+{{- end }}

@@ -1,0 +1,1700 @@
+{
+  "researchRequestId": "7f1c9d5e-0b3a-4c2f-9a1e-2b6d4f8c0a11",
+  "attempt": 1,
+  "snapshotId": "3e2b1a90-5c4d-4e6f-8a7b-9c0d1e2f3a4b",
+  "methodologyVersion": "em-1.0.0",
+  "profileId": "00000000-0000-4000-8000-000000000001",
+  "aggregator": "WEIGHTED_GEOMETRIC",
+  "embeddingModelId": "tfidf-svd-384-v1",
+  "documentsAnalyzed": 1244,
+  "candidatesEvaluated": 2383,
+  "truncated": false,
+  "directionRecognized": false,
+  "directionSuggestions": [
+    "квантовая информация",
+    "квантовая криптография",
+    "квантовые вычисления"
+  ],
+  "windowFrom": "2018-01-01",
+  "windowTo": "2025-12-31",
+  "stageTimingsMs": {
+    "clustering": 0.0,
+    "embedding": 0.0,
+    "extracting": 0.0,
+    "narrating": 0.0,
+    "scoring": 0.0
+  },
+  "trends": [
+    {
+      "rank": 1,
+      "trendKey": "linear-time model",
+      "title": "linear-time models",
+      "definition": "Тема «linear-time models» выделена по 8 документам за 2022–2025 гг.; варианты названия: design enables linear-time inference, design enables linear-time, linear-time inference",
+      "aliases": [
+        "design enables linear-time inference",
+        "design enables linear-time",
+        "linear-time inference",
+        "distant tokens",
+        "recall of distant",
+        "recall of distant tokens",
+        "structured state",
+        "structured state space",
+        "structured state space model"
+      ],
+      "motivation": {
+        "problem": "Existing inference engines are limited by recall of distant tokens in linear-time models, which becomes a bottleneck in streaming inference. Current serving stacks suffer from recall of distant tokens in linear-time models, and closing this gap is still an open problem.",
+        "benefit": "We show that the design enables linear-time inference over million-token contexts, which the published state of the art cannot provide. We show that the design enables linear-time inference over million-token contexts, which prior distillation pipelines cannot provide.",
+        "attributions": [
+          {
+            "statement": "problem",
+            "evidenceIndex": 0
+          },
+          {
+            "statement": "problem",
+            "evidenceIndex": 5
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 3
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 1
+          }
+        ]
+      },
+      "caseExample": {
+        "organization": "Google DeepMind",
+        "organizationType": "COMPANY",
+        "country": "GB",
+        "summary": "Interest in structured state space model has grown quickly across production question answering and adjacent fields. Existing inference engines are limited by recall of distant tokens in linear-time models, which becomes a bottleneck in streaming inference. We describe…",
+        "evidenceIndex": 0
+      },
+      "score": 57.843297,
+      "confidence": 0.947766,
+      "lowEvidence": false,
+      "indicators": [
+        {
+          "name": "novelty",
+          "value": 0.367879,
+          "weight": 0.2,
+          "multiplier": 0.818731,
+          "shortfallShare": 0.365342,
+          "explanation": "Первое достоверное упоминание — 2023 г.; возраст темы 3 г. при τ = 3.0; novelty = exp(−3/3.0) = 0.368.",
+          "diagnostics": {
+            "age": 3,
+            "credible": true,
+            "currentYear": 2026,
+            "firstYear": 2023,
+            "tau": 3.0
+          }
+        },
+        {
+          "name": "growth",
+          "value": 0.524752,
+          "weight": 0.3,
+          "multiplier": 0.824112,
+          "shortfallShare": 0.353374,
+          "explanation": "Лог-линейный наклон β = 0.576 (R² = 0.860) по 4 периодам с данными: это ≈ ×1.78 документов за период; growth = 0.576/ln 3.0 = 0.525. Ускорение β_поздн − β_ранн = 0.576.",
+          "diagnostics": {
+            "acceleration": 0.576499515882419,
+            "betaEarly": 0.0,
+            "betaRecent": 0.576499515882419,
+            "burst_baselineRate": 0.006430868167202572,
+            "burst_burstingPeriods": 2,
+            "burst_startPeriod": "2024",
+            "burst_weight": 3.108977076336127,
+            "dodGrowthRate": 1.2718282025224543,
+            "dodMean": 0.0067770259460495,
+            "dovGrowthRate": 3.5657534674723306,
+            "dovMean": 0.031475847154514625,
+            "gMax": 3.0,
+            "intercept": -2.3648895813578674,
+            "lifecycleRule": "accelerating",
+            "lnGMax": 1.0986122886681098,
+            "periodFactor": 1.7797973613448612,
+            "pointsUsed": 4,
+            "r2": 0.8602918905699921,
+            "slope": 0.576499515882419,
+            "weakSignalQuadrant": true
+          }
+        },
+        {
+          "name": "diffusion",
+          "value": 0.805053,
+          "weight": 0.15,
+          "multiplier": 0.967996,
+          "shortfallShare": 0.059417,
+          "explanation": "Тема встречается в 5 из 5 активных классов источников (нормированная энтропия 0.904), у 19 организаций (0.762 от O_ref = 50) и на 9 площадках (0.707 от V_ref = 25); diffusion = 0.805.",
+          "diagnostics": {
+            "activeSourceClasses": 5,
+            "entropy": 0.9042492561839792,
+            "entropyRaw": 1.4553330351928315,
+            "orgBreadth": 0.7619189031733016,
+            "orgCount": 19,
+            "orgRef": 50,
+            "sourceClassCount": 5,
+            "venueBreadth": 0.7067270923753285,
+            "venueCount": 9,
+            "venueRef": 25
+          }
+        },
+        {
+          "name": "weakness",
+          "value": 0.548204,
+          "weight": 0.15,
+          "multiplier": 0.913779,
+          "shortfallShare": 0.164708,
+          "explanation": "За последние 2 периода тема набрала 14 документов при максимуме 400 по направлению: громкость 0.452, weakness = 1 − 0.452 = 0.548.",
+          "diagnostics": {
+            "floor": 5,
+            "loudness": 0.4517964010854658,
+            "recentDocuments": 14,
+            "recentMax": 400,
+            "recentMaxObserved": 400,
+            "window": 2
+          }
+        },
+        {
+          "name": "coherence",
+          "value": 0.902679,
+          "weight": 0.1,
+          "multiplier": 0.989813,
+          "shortfallShare": 0.018703,
+          "explanation": "Семантическая связность 0.893 (термины кластера, 7 терм.), лексическая связность (NPMI по 10 парам) 0.917; coherence = 0.60·0.893 + 0.40·0.917 = 0.903.",
+          "diagnostics": {
+            "cEmb": 0.8929514423796564,
+            "cNpmi": 0.9172692357370266,
+            "embeddingBasis": "термины кластера",
+            "meanNpmi": 0.8345384714740531,
+            "memberCount": 7,
+            "pairsUsed": 10
+          }
+        },
+        {
+          "name": "impact",
+          "value": 0.810164,
+          "weight": 0.1,
+          "multiplier": 0.979168,
+          "shortfallShare": 0.038456,
+          "explanation": "Средняя цитируемость 9.16 цит./год (12 док. с данными) → citationVel = 0.967; патентов 2/16 (0.125) → patentRatio = 0.417; корпоративная аффилиация у 8/16 (0.500) → industry = 1.000; impact = 0.810.",
+          "diagnostics": {
+            "citationVelocity": 0.9670318632652116,
+            "cpy": 9.16388888888889,
+            "cpyRef": 10.0,
+            "documentsWithCitations": 12,
+            "industry": 1.0,
+            "industryDocuments": 8,
+            "industryShare": 0.5,
+            "patentDocuments": 2,
+            "patentRatio": 0.4166666666666667,
+            "patentShare": 0.125
+          }
+        }
+      ],
+      "lifecycleStage": "ACCELERATING",
+      "firstMentionYear": 2023,
+      "totalDocuments": 16,
+      "burst": {
+        "startPeriod": "2024",
+        "weight": 3.108977076336127
+      },
+      "timeline": [
+        {
+          "period": "2018",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2019",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2020",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2021",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2022",
+          "documentCount": 1,
+          "dov": 0.0053125,
+          "dod": 0.0053125
+        },
+        {
+          "period": "2023",
+          "documentCount": 1,
+          "dov": 0.012857142857142857,
+          "dod": 0.004285714285714286
+        },
+        {
+          "period": "2024",
+          "documentCount": 6,
+          "dov": 0.1357142857142857,
+          "dod": 0.02087912087912088
+        },
+        {
+          "period": "2025",
+          "documentCount": 8,
+          "dov": 0.09792284866468842,
+          "dod": 0.02373887240356083
+        }
+      ],
+      "evidence": [
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2410.85688",
+          "documentId": "38da8923-a3bc-5380-8aff-86e1110144bc",
+          "title": "Efficient structured state space model via grouped-query attention",
+          "authors": "Fatima Sokolova, Tomás Larsson, Marta Bernard",
+          "organization": "Google DeepMind",
+          "organizationCountry": "GB",
+          "publishedOn": "2024-10-25",
+          "url": "https://arxiv.org/abs/2410.85688",
+          "doi": null,
+          "citationCount": 58,
+          "relevance": 1.0,
+          "snippet": "Interest in structured state space model has grown quickly across production question answering and adjacent fields. Existing inference engines are limited by recall of distant tokens in linear-time models, which becomes a bottleneck in streaming inference. We describe PolyPrime, a novel approach to robustness based on grouped-query attention. We show that the design enables linear-time inference…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2309.48246",
+          "documentId": "6e66264d-6d80-5a67-80f9-455577b864b3",
+          "title": "On the memory footprint of state space model",
+          "authors": "Elena Sokolova, Katarzyna Virtanen, Nikolaos Li, Ivan Li, Antoine Tanaka",
+          "organization": "UC Berkeley",
+          "organizationCountry": "US",
+          "publishedOn": "2023-09-15",
+          "url": "https://arxiv.org/abs/2309.48246",
+          "doi": null,
+          "citationCount": 90,
+          "relevance": 1.0,
+          "snippet": "Recent work on state space model (SSM) has renewed interest in memory footprint for code assistance. However, memory footprint is limited by quadratic attention cost on million-token sequences and remains challenging outside curated benchmarks. We introduce AuroraBench, a proposed method built on quantisation-aware training. We show that the design enables linear-time inference over million-token…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2510.63576",
+          "documentId": "beeab5ed-bbc3-5716-94dd-fce73cfa9782",
+          "title": "Grouped-query attention improves the calibration of state space model",
+          "authors": "Bence Huang, Daniel García, Yuki Dubois",
+          "organization": "Princeton University",
+          "organizationCountry": "US",
+          "publishedOn": "2025-10-01",
+          "url": "https://arxiv.org/abs/2510.63576",
+          "doi": null,
+          "citationCount": 24,
+          "relevance": 1.0,
+          "snippet": "Structured state space model has become a central building block of on-device assistants. A key bottleneck is quadratic attention cost on million-token sequences, which existing inference engines do not address. We describe HaloFormer, a novel approach to calibration based on grouped-query attention. The method reduces peak memory by 18% and achieves linear-time inference over million-token…"
+        },
+        {
+          "sourceId": "openalex",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "W2105114385",
+          "documentId": "b3ecd4fc-65f5-5266-99db-4041264153ed",
+          "title": "NeuroStack: structured state space model for production question answering",
+          "authors": "Ivan Novák, Ivan Larsson, Bence Suzuki, Yara Lefèvre",
+          "organization": "Fraunhofer IIS",
+          "organizationCountry": "DE",
+          "publishedOn": "2024-09-25",
+          "url": "https://openalex.org/W2105114385",
+          "doi": "10.1103/statespa.2024.628564",
+          "citationCount": 39,
+          "relevance": 1.0,
+          "snippet": "Interest in structured state space model has grown quickly across production question answering and adjacent fields. Current pipelines suffer from training instability of long convolutions, and closing this gap is still an open problem. We describe NeuroStack, a novel approach to sample efficiency based on knowledge distillation. We show that the design enables linear-time inference over…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2412.40023",
+          "documentId": "62886778-6819-52e3-8928-a0eba39099a0",
+          "title": "CinderBridge: state space model for agentic workflows",
+          "authors": "Ingrid Silva, Rachel Lefèvre, Rachel Rodríguez, Nikolaos Li, Fatima Nikolaidis",
+          "organization": "Anthropic",
+          "organizationCountry": "US",
+          "publishedOn": "2024-12-16",
+          "url": "https://arxiv.org/abs/2412.40023",
+          "doi": null,
+          "citationCount": 34,
+          "relevance": 1.0,
+          "snippet": "Recent work on state space model (SSM) has renewed interest in calibration for agentic workflows. Existing serving stacks are limited by recall of distant tokens in linear-time models, which becomes a bottleneck in long-context workloads. We describe CinderBridge, a novel approach to calibration based on knowledge distillation. We show that CinderBridge enables linear-time inference over…"
+        },
+        {
+          "sourceId": "openalex",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "W2522995899",
+          "documentId": "3ed21d14-59f2-5e03-b37f-85914c014046",
+          "title": "Measuring throughput in state space model deployments",
+          "authors": "Anna Martínez, Noah Conti",
+          "organization": "Princeton University",
+          "organizationCountry": "US",
+          "publishedOn": "2025-06-18",
+          "url": "https://openalex.org/W2522995899",
+          "doi": "10.1016/statespa.2025.308019",
+          "citationCount": 18,
+          "relevance": 1.0,
+          "snippet": "State space model (SSM) promises to change how on-device assistants is engineered. Current serving stacks suffer from recall of distant tokens in linear-time models, and closing this gap is still an open problem. This work presents ProtoBench, which applies low-rank adaptation to throughput. We show that ProtoBench enables linear-time inference over million-token contexts and outperforms prior…"
+        },
+        {
+          "sourceId": "github",
+          "sourceClass": "CODE_REPOSITORY",
+          "externalId": "mlfoundations/py-ssm",
+          "documentId": "3e8a464f-2601-55f1-885b-e1d1bef6d660",
+          "title": "py-ssm: reproducible selective state space model baselines and datasets",
+          "authors": "David Fernández, Carmen Huang",
+          "organization": "OpenAI",
+          "organizationCountry": "US",
+          "publishedOn": "2025-05-22",
+          "url": "https://github.com/mlfoundations/py-ssm",
+          "doi": null,
+          "citationCount": null,
+          "relevance": 1.0,
+          "snippet": "py-ssm is an open-source implementation of state space model (SSM) for agentic workflows, maintained by contributors from OpenAI. The project provides low-rank adaptation, reproducible baselines and a test suite covering calibration. However, calibration is limited by recall of distant tokens in linear-time models and remains challenging outside curated benchmarks. We show that CascadeNet…"
+        },
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1093/statespa.2022.425672",
+          "documentId": "e2c93ea8-10d7-5f64-81b9-a86f4ad81b8e",
+          "title": "State space model under streaming inference: an empirical study",
+          "authors": "Céline Volkov, Carmen van Dijk, Ming Rao, Elif Lindqvist, Ana Iyer",
+          "organization": "EPFL",
+          "organizationCountry": "CH",
+          "publishedOn": "2022-04-26",
+          "url": "https://doi.org/10.1093/statespa.2022.425672",
+          "doi": "10.1093/statespa.2022.425672",
+          "citationCount": 34,
+          "relevance": 1.0,
+          "snippet": "Recent work on selective state space model has renewed interest in memory footprint for production question answering. Current inference engines suffer from training instability of long convolutions, and closing this gap is still an open problem. We describe HaloScope, a novel approach to memory footprint based on curriculum sampling. Our approach enables linear-time inference over million-token…"
+        }
+      ]
+    },
+    {
+      "rank": 2,
+      "trendKey": "speculative decod",
+      "title": "speculative decoding",
+      "definition": "Тема «speculative decoding» выделена по 8 документам за 2024–2025 гг.; варианты названия: autoregressive decoding, sequential bottleneck of autoregressive, draft-and-verify decoding",
+      "aliases": [
+        "autoregressive decoding",
+        "sequential bottleneck of autoregressive",
+        "draft-and-verify decoding",
+        "open-source implementation of draft-and-verify"
+      ],
+      "motivation": {
+        "problem": "Current evaluation harnesss suffer from the sequential bottleneck of autoregressive decoding, and closing this gap is still an open problem. However, the sequential bottleneck of autoregressive decoding remains challenging in low-latency serving.",
+        "benefit": "The proposed method is compared against the state of the art on an internal production trace. We show that HyperBridge enables higher tokens per second at an unchanged output distribution and outperforms the published state of the art under long-context workloads.",
+        "attributions": [
+          {
+            "statement": "problem",
+            "evidenceIndex": 4
+          },
+          {
+            "statement": "problem",
+            "evidenceIndex": 5
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 5
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 1
+          }
+        ]
+      },
+      "caseExample": {
+        "organization": "Hugging Face",
+        "organizationType": "COMPANY",
+        "country": "US",
+        "summary": "Interest in speculative decoding has grown quickly across enterprise search and adjacent fields. Existing evaluation harnesss are limited by low acceptance rates on long generations, which becomes a bottleneck in long-context workloads. We introduce AtlasKit, a proposed method…",
+        "evidenceIndex": 2
+      },
+      "score": 56.544332,
+      "confidence": 0.924191,
+      "lowEvidence": false,
+      "indicators": [
+        {
+          "name": "novelty",
+          "value": 0.367879,
+          "weight": 0.2,
+          "multiplier": 0.818731,
+          "shortfallShare": 0.350788,
+          "explanation": "Первое достоверное упоминание — 2023 г.; возраст темы 3 г. при τ = 3.0; novelty = exp(−3/3.0) = 0.368.",
+          "diagnostics": {
+            "age": 3,
+            "credible": true,
+            "currentYear": 2026,
+            "firstYear": 2023,
+            "tau": 3.0
+          }
+        },
+        {
+          "name": "growth",
+          "value": 0.547952,
+          "weight": 0.3,
+          "multiplier": 0.834877,
+          "shortfallShare": 0.316534,
+          "explanation": "Лог-линейный наклон β = 0.602 (R² = 0.992) по 3 периодам с данными: это ≈ ×1.83 документов за период; growth = 0.602/ln 3.0 = 0.548. Ускорение β_поздн − β_ранн = 0.602.",
+          "diagnostics": {
+            "acceleration": 0.6019864021629681,
+            "betaEarly": 0.0,
+            "betaRecent": 0.6019864021629681,
+            "burst_baselineRate": 0.006430868167202572,
+            "burst_burstingPeriods": 2,
+            "burst_startPeriod": "2024",
+            "burst_weight": 3.000804339083271,
+            "dodGrowthRate": 0.7824100214776459,
+            "dodMean": 0.006584615928087738,
+            "dovGrowthRate": 0.8287557070158974,
+            "dovMean": 0.020559749350550535,
+            "gMax": 3.0,
+            "intercept": -2.482919198177373,
+            "lifecycleRule": "accelerating",
+            "lnGMax": 1.0986122886681098,
+            "periodFactor": 1.8257418583505538,
+            "pointsUsed": 3,
+            "r2": 0.9924139744129269,
+            "slope": 0.6019864021629681,
+            "weakSignalQuadrant": true
+          }
+        },
+        {
+          "name": "diffusion",
+          "value": 0.771785,
+          "weight": 0.15,
+          "multiplier": 0.961888,
+          "shortfallShare": 0.068154,
+          "explanation": "Тема встречается в 5 из 5 активных классов источников (нормированная энтропия 0.865), у 17 организаций (0.735 от O_ref = 50) и на 8 площадках (0.674 от V_ref = 25); diffusion = 0.772.",
+          "diagnostics": {
+            "activeSourceClasses": 5,
+            "entropy": 0.8647365386176832,
+            "entropyRaw": 1.3917397695183338,
+            "orgBreadth": 0.7351220597983265,
+            "orgCount": 17,
+            "orgRef": 50,
+            "sourceClassCount": 5,
+            "venueBreadth": 0.674389034116991,
+            "venueCount": 8,
+            "venueRef": 25
+          }
+        },
+        {
+          "name": "weakness",
+          "value": 0.548204,
+          "weight": 0.15,
+          "multiplier": 0.913779,
+          "shortfallShare": 0.158146,
+          "explanation": "За последние 2 периода тема набрала 14 документов при максимуме 400 по направлению: громкость 0.452, weakness = 1 − 0.452 = 0.548.",
+          "diagnostics": {
+            "floor": 5,
+            "loudness": 0.4517964010854658,
+            "recentDocuments": 14,
+            "recentMax": 400,
+            "recentMaxObserved": 400,
+            "window": 2
+          }
+        },
+        {
+          "name": "coherence",
+          "value": 0.889531,
+          "weight": 0.1,
+          "multiplier": 0.988362,
+          "shortfallShare": 0.020532,
+          "explanation": "Семантическая связность 0.899 (термины кластера, 4 терм.), лексическая связность (NPMI по 6 парам) 0.876; coherence = 0.60·0.899 + 0.40·0.876 = 0.890.",
+          "diagnostics": {
+            "cEmb": 0.8988238125331867,
+            "cNpmi": 0.8755917883145623,
+            "embeddingBasis": "термины кластера",
+            "meanNpmi": 0.7511835766291247,
+            "memberCount": 4,
+            "pairsUsed": 6
+          }
+        },
+        {
+          "name": "impact",
+          "value": 0.612964,
+          "weight": 0.1,
+          "multiplier": 0.952234,
+          "shortfallShare": 0.085846,
+          "explanation": "Средняя цитируемость 3.96 цит./год (12 док. с данными) → citationVel = 0.668; патентов 1/16 (0.062) → patentRatio = 0.208; корпоративная аффилиация у 12/16 (0.750) → industry = 1.000; impact = 0.613.",
+          "diagnostics": {
+            "citationVelocity": 0.667697910299109,
+            "cpy": 3.9583333333333335,
+            "cpyRef": 10.0,
+            "documentsWithCitations": 12,
+            "industry": 1.0,
+            "industryDocuments": 12,
+            "industryShare": 0.75,
+            "patentDocuments": 1,
+            "patentRatio": 0.20833333333333334,
+            "patentShare": 0.0625
+          }
+        }
+      ],
+      "lifecycleStage": "ACCELERATING",
+      "firstMentionYear": 2023,
+      "totalDocuments": 16,
+      "burst": {
+        "startPeriod": "2024",
+        "weight": 3.000804339083271
+      },
+      "timeline": [
+        {
+          "period": "2018",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2019",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2020",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2021",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2022",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2023",
+          "documentCount": 2,
+          "dov": 0.025714285714285714,
+          "dod": 0.008571428571428572
+        },
+        {
+          "period": "2024",
+          "documentCount": 5,
+          "dov": 0.055677655677655674,
+          "dod": 0.0173992673992674
+        },
+        {
+          "period": "2025",
+          "documentCount": 9,
+          "dov": 0.0830860534124629,
+          "dod": 0.026706231454005934
+        }
+      ],
+      "evidence": [
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2407.51711",
+          "documentId": "e34bb4e9-7965-519e-ae53-f9ba98098b27",
+          "title": "A modular framework for speculative decoding in on-device assistants",
+          "authors": "Hiroshi Dubois, Wei Lindqvist",
+          "organization": "University of Cambridge",
+          "organizationCountry": "GB",
+          "publishedOn": "2024-07-21",
+          "url": "https://arxiv.org/abs/2407.51711",
+          "doi": null,
+          "citationCount": 21,
+          "relevance": 1.0,
+          "snippet": "Speculative decoding is increasingly deployed in on-device assistants. Current inference engines suffer from draft-target mismatch under distribution shift, and closing this gap is still an open problem. We introduce VertexLite, a proposed method built on grouped-query attention. The approach achieves a 1.8x speedup while reducing cost per token by 18%. The proposed method is compared against the…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2410.72174",
+          "documentId": "ae832be3-3edd-5f33-bf84-07a754b56e73",
+          "title": "Towards practical draft-and-verify decoding in long-context workloads",
+          "authors": "Rajesh Lindqvist, Michael Nikolaidis, Wei Huang, Céline Iyer, Elif Wang, Michael Petrov",
+          "organization": "Google DeepMind",
+          "organizationCountry": "GB",
+          "publishedOn": "2024-10-25",
+          "url": "https://arxiv.org/abs/2410.72174",
+          "doi": null,
+          "citationCount": 16,
+          "relevance": 1.0,
+          "snippet": "Recent work on draft-and-verify decoding has renewed interest in robustness for multilingual summarisation. A key bottleneck is the sequential bottleneck of autoregressive decoding, which existing evaluation harnesss do not address. We introduce HyperBridge, a proposed method built on grouped-query attention. We show that HyperBridge enables higher tokens per second at an unchanged output…"
+        },
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1109/speculat.2024.871486",
+          "documentId": "09e6bf05-06bd-5c7b-be05-18c3340bf41f",
+          "title": "On the throughput of speculative decoding",
+          "authors": "Daniel Banerjee, Elena Lefèvre, Mia Conti, Katarzyna Souza, Zsófia Silva, Amara Okafor",
+          "organization": "Hugging Face",
+          "organizationCountry": "US",
+          "publishedOn": "2024-03-07",
+          "url": "https://doi.org/10.1109/speculat.2024.871486",
+          "doi": "10.1109/speculat.2024.871486",
+          "citationCount": 19,
+          "relevance": 1.0,
+          "snippet": "Interest in speculative decoding has grown quickly across enterprise search and adjacent fields. Existing evaluation harnesss are limited by low acceptance rates on long generations, which becomes a bottleneck in long-context workloads. We introduce AtlasKit, a proposed method built on knowledge distillation. The method reduces error rate by 61% and achieves higher tokens per second at an…"
+        },
+        {
+          "sourceId": "openalex",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "W3700440002",
+          "documentId": "073ae339-ef44-572f-a3df-ae76eba02a86",
+          "title": "FluxCore: an open evaluation of speculative decoding",
+          "authors": "Yuki Lee, Emily Petrov, Omar Volkov, Nikolaos Wang",
+          "organization": "Google DeepMind",
+          "organizationCountry": "GB",
+          "publishedOn": "2025-08-19",
+          "url": "https://openalex.org/W3700440002",
+          "doi": "10.1145/speculat.2025.382096",
+          "citationCount": 9,
+          "relevance": 1.0,
+          "snippet": "Speculative decoding is increasingly deployed in agentic workflows. A key bottleneck is low acceptance rates on long generations, which existing evaluation harnesss do not address. We introduce FluxCore, a proposed method built on low-rank adaptation. We show that FluxCore outperforms strong transformer baselines by 53% on a held-out multilingual benchmark. Experimental results confirm that the…"
+        },
+        {
+          "sourceId": "openalex",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "W4330383576",
+          "documentId": "8a95e1e9-ed58-55eb-a261-13b5d16f1f47",
+          "title": "Draft-and-verify decoding meets curriculum sampling",
+          "authors": "Rajesh Jansen, Álvaro Sharma",
+          "organization": "Sber AI Lab",
+          "organizationCountry": "RU",
+          "publishedOn": "2024-09-15",
+          "url": "https://openalex.org/W4330383576",
+          "doi": "10.1103/speculat.2024.418864",
+          "citationCount": 13,
+          "relevance": 1.0,
+          "snippet": "Draft-and-verify decoding is increasingly deployed in code assistance. Current evaluation harnesss suffer from the sequential bottleneck of autoregressive decoding, and closing this gap is still an open problem. In this paper we present VertexGraph, a novel approach that combines curriculum sampling with quantisation-aware training. We show that VertexGraph enables better accelerator utilisation…"
+        },
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1093/speculat.2025.694565",
+          "documentId": "99a16346-3f21-535a-85ea-15a02a6c4f1b",
+          "title": "DeltaNet: revisiting sample efficiency for speculative decoding",
+          "authors": "Isabel Liu, François Zhang, Carmen Tanaka",
+          "organization": "Huawei Noah's Ark Lab",
+          "organizationCountry": "CN",
+          "publishedOn": "2025-03-01",
+          "url": "https://doi.org/10.1093/speculat.2025.694565",
+          "doi": "10.1093/speculat.2025.694565",
+          "citationCount": 9,
+          "relevance": 1.0,
+          "snippet": "Recent work on draft-and-verify decoding has renewed interest in sample efficiency for enterprise search. However, the sequential bottleneck of autoregressive decoding remains challenging in low-latency serving. This work presents DeltaNet, which applies quantisation-aware training to sample efficiency. Our approach enables better accelerator utilisation during serving and reduces peak memory by…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2509.15188",
+          "documentId": "064968f5-8262-5751-8244-f86a9b6bfdd5",
+          "title": "Measuring memory footprint in speculative decoding deployments",
+          "authors": "Jonas Mensah, Thomas Suzuki, Noah Lindqvist, Carmen Tran, Ahmed Volkov, Ana Müller",
+          "organization": "TU Munich",
+          "organizationCountry": "DE",
+          "publishedOn": "2025-09-23",
+          "url": "https://arxiv.org/abs/2509.15188",
+          "doi": null,
+          "citationCount": 7,
+          "relevance": 1.0,
+          "snippet": "Speculative decoding promises to change how agentic workflows is engineered. Existing training recipes are limited by the sequential bottleneck of autoregressive decoding, which becomes a bottleneck in long-context workloads. In this paper we present ProtoBridge, a novel approach that combines grouped-query attention with low-rank adaptation. Our approach enables higher tokens per second at an…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2510.63102",
+          "documentId": "e1401e44-56bb-5f72-b305-875e000590ae",
+          "title": "Scaling speculative decoding with knowledge distillation",
+          "authors": "Miguel Tanaka, Fatima Kovács",
+          "organization": "Mistral AI",
+          "organizationCountry": "FR",
+          "publishedOn": "2025-10-24",
+          "url": "https://arxiv.org/abs/2510.63102",
+          "doi": null,
+          "citationCount": 6,
+          "relevance": 1.0,
+          "snippet": "Speculative decoding promises to change how enterprise search is engineered. However, deployments still suffer from draft-target mismatch under distribution shift; this remains an open problem in long-context workloads. This work presents DeltaMesh, which applies knowledge distillation to throughput. Our approach enables better accelerator utilisation during serving and reduces training cost by…"
+        }
+      ]
+    },
+    {
+      "rank": 3,
+      "trendKey": "topological qubit",
+      "title": "topological qubit",
+      "definition": "Тема «topological qubit» выделена по 8 документам за 2023–2025 гг.; варианты названия: fewer physical qubits, logical qubit, qubit programme",
+      "aliases": [
+        "fewer physical qubits",
+        "logical qubit",
+        "qubit programme"
+      ],
+      "motivation": {
+        "problem": "However, gate fidelity is limited by reproducibility across fabricated devices and remains challenging outside curated benchmarks. However, deployments still suffer from disorder at the semiconductor-superconductor interface; this remains an open problem in multi-qubit arrays.",
+        "benefit": "We show that the design enables fewer physical qubits per logical qubit, which previously reported devices cannot provide. We show that QuantaForge enables fewer physical qubits per logical qubit and outperforms the reference surface-code decoder under noisy intermediate-scale devices.",
+        "attributions": [
+          {
+            "statement": "problem",
+            "evidenceIndex": 0
+          },
+          {
+            "statement": "problem",
+            "evidenceIndex": 2
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 0
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 5
+          }
+        ]
+      },
+      "caseExample": {
+        "organization": "Microsoft Research",
+        "organizationType": "COMPANY",
+        "country": "US",
+        "summary": "A device for topological qubit is disclosed. In known systems, reproducibility across fabricated devices is limited by the available scalability, and reliable operation remains challenging. The disclosed device comprises a control unit and a error mitigation stage configured to…",
+        "evidenceIndex": 7
+      },
+      "score": 55.142795,
+      "confidence": 0.836468,
+      "lowEvidence": false,
+      "indicators": [
+        {
+          "name": "novelty",
+          "value": 0.513417,
+          "weight": 0.2,
+          "multiplier": 0.875173,
+          "shortfallShare": 0.223998,
+          "explanation": "Первое достоверное упоминание — 2024 г.; возраст темы 2 г. при τ = 3.0; novelty = exp(−2/3.0) = 0.513.",
+          "diagnostics": {
+            "age": 2,
+            "credible": true,
+            "currentYear": 2026,
+            "firstYear": 2024,
+            "tau": 3.0
+          }
+        },
+        {
+          "name": "growth",
+          "value": 0.417022,
+          "weight": 0.3,
+          "multiplier": 0.769215,
+          "shortfallShare": 0.440802,
+          "explanation": "Лог-линейный наклон β = 0.458 (R² = 0.919) по 3 периодам с данными: это ≈ ×1.58 документов за период; growth = 0.458/ln 3.0 = 0.417. Ускорение β_поздн − β_ранн = 0.458.",
+          "diagnostics": {
+            "acceleration": 0.4581453659370775,
+            "betaEarly": 0.0,
+            "betaRecent": 0.4581453659370775,
+            "burst_baselineRate": 0.006430868167202572,
+            "burst_burstingPeriods": 0,
+            "burst_startPeriod": "",
+            "burst_weight": 0.0,
+            "dodGrowthRate": 0.7864322412971484,
+            "dodMean": 0.0033243388658818927,
+            "dovGrowthRate": 1.197644400127611,
+            "dovMean": 0.007633313768328605,
+            "gMax": 3.0,
+            "intercept": -1.977391076854897,
+            "lifecycleRule": "emerging",
+            "lnGMax": 1.0986122886681098,
+            "periodFactor": 1.5811388300841895,
+            "pointsUsed": 3,
+            "r2": 0.919368591981603,
+            "slope": 0.4581453659370775,
+            "weakSignalQuadrant": true
+          }
+        },
+        {
+          "name": "diffusion",
+          "value": 0.661065,
+          "weight": 0.15,
+          "multiplier": 0.939802,
+          "shortfallShare": 0.104303,
+          "explanation": "Тема встречается в 4 из 5 активных классов источников (нормированная энтропия 0.821), у 6 организаций (0.495 от O_ref = 50) и на 7 площадках (0.638 от V_ref = 25); diffusion = 0.661.",
+          "diagnostics": {
+            "activeSourceClasses": 5,
+            "entropy": 0.8207140722512382,
+            "entropyRaw": 1.3208883431493221,
+            "orgBreadth": 0.49491262604822334,
+            "orgCount": 6,
+            "orgRef": 50,
+            "sourceClassCount": 4,
+            "venueBreadth": 0.6382381606600894,
+            "venueCount": 7,
+            "venueRef": 25
+          }
+        },
+        {
+          "name": "weakness",
+          "value": 0.653077,
+          "weight": 0.15,
+          "multiplier": 0.93809,
+          "shortfallShare": 0.107366,
+          "explanation": "За последние 2 периода тема набрала 7 документов при максимуме 400 по направлению: громкость 0.347, weakness = 1 − 0.347 = 0.653.",
+          "diagnostics": {
+            "floor": 5,
+            "loudness": 0.34692274331405704,
+            "recentDocuments": 7,
+            "recentMax": 400,
+            "recentMaxObserved": 400,
+            "window": 2
+          }
+        },
+        {
+          "name": "coherence",
+          "value": 0.892108,
+          "weight": 0.1,
+          "multiplier": 0.988648,
+          "shortfallShare": 0.01918,
+          "explanation": "Семантическая связность 0.909 (термины кластера, 3 терм.), лексическая связность (NPMI по 3 парам) 0.866; coherence = 0.60·0.909 + 0.40·0.866 = 0.892.",
+          "diagnostics": {
+            "cEmb": 0.909428124590611,
+            "cNpmi": 0.866126846375666,
+            "embeddingBasis": "термины кластера",
+            "meanNpmi": 0.7322536927513318,
+            "memberCount": 3,
+            "pairsUsed": 3
+          }
+        },
+        {
+          "name": "impact",
+          "value": 0.537329,
+          "weight": 0.1,
+          "multiplier": 0.939775,
+          "shortfallShare": 0.104351,
+          "explanation": "Средняя цитируемость 1.38 цит./год (6 док. с данными) → citationVel = 0.361; патентов 1/8 (0.125) → patentRatio = 0.417; корпоративная аффилиация у 5/8 (0.625) → industry = 1.000; impact = 0.537.",
+          "diagnostics": {
+            "citationVelocity": 0.3607319499308837,
+            "cpy": 1.375,
+            "cpyRef": 10.0,
+            "documentsWithCitations": 6,
+            "industry": 1.0,
+            "industryDocuments": 5,
+            "industryShare": 0.625,
+            "patentDocuments": 1,
+            "patentRatio": 0.4166666666666667,
+            "patentShare": 0.125
+          }
+        }
+      ],
+      "lifecycleStage": "EMERGING",
+      "firstMentionYear": 2024,
+      "totalDocuments": 8,
+      "burst": null,
+      "timeline": [
+        {
+          "period": "2018",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2019",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2020",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2021",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2022",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2023",
+          "documentCount": 1,
+          "dov": 0.008571428571428572,
+          "dod": 0.004285714285714286
+        },
+        {
+          "period": "2024",
+          "documentCount": 3,
+          "dov": 0.013919413919413919,
+          "dod": 0.01043956043956044
+        },
+        {
+          "period": "2025",
+          "documentCount": 4,
+          "dov": 0.03857566765578635,
+          "dod": 0.011869436201780416
+        }
+      ],
+      "evidence": [
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1093/topologi.2024.747691",
+          "documentId": "f3ff126d-a7cb-5f9e-b4f7-70098a9e96fd",
+          "title": "Rethinking gate fidelity in Majorana zero mode qubit",
+          "authors": "Omar Li, Aisha Lee, Antoine Mensah, Arjun Weber",
+          "organization": "Pasqal",
+          "organizationCountry": "FR",
+          "publishedOn": "2024-08-10",
+          "url": "https://doi.org/10.1093/topologi.2024.747691",
+          "doi": "10.1093/topologi.2024.747691",
+          "citationCount": 8,
+          "relevance": 1.0,
+          "snippet": "Majorana zero mode qubit promises to change how fault-tolerant computation is engineered. However, gate fidelity is limited by reproducibility across fabricated devices and remains challenging outside curated benchmarks. In this paper we present EmberScope, a novel approach that combines error mitigation with dynamical decoupling. We show that the design enables fewer physical qubits per logical…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2404.59991",
+          "documentId": "50c02280-bbaf-5811-adb0-1a204e3b262f",
+          "title": "VertexForge: an open evaluation of topological qubit",
+          "authors": "Zsófia Sharma, Elif Andersen, Mehmet Liu, Min-seo van Dijk, Katarzyna Fernández, Álvaro Choi",
+          "organization": "Rigetti Computing",
+          "organizationCountry": "US",
+          "publishedOn": "2024-04-04",
+          "url": "https://arxiv.org/abs/2404.59991",
+          "doi": null,
+          "citationCount": 7,
+          "relevance": 1.0,
+          "snippet": "Recent work on Majorana zero mode qubit has renewed interest in scalability for quantum sensing. However, disorder at the semiconductor-superconductor interface remains challenging in cryogenic operation. In this paper we present VertexForge, a novel approach that combines cryo-CMOS control electronics with dynamical decoupling. The approach achieves a 3.1x speedup while reducing gate infidelity…"
+        },
+        {
+          "sourceId": "openalex",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "W4906960919",
+          "documentId": "21326bb0-7fe8-586d-83b0-f1d55329c2f5",
+          "title": "A modular framework for Majorana zero mode qubit in secure communication links",
+          "authors": "Priya Banerjee, Nikolaos Volkov, Mehmet Dubois, Céline Petrov, Min-seo Sato",
+          "organization": "IQM Quantum Computers",
+          "organizationCountry": "FI",
+          "publishedOn": "2025-03-04",
+          "url": "https://openalex.org/W4906960919",
+          "doi": "10.1103/topologi.2025.144655",
+          "citationCount": 4,
+          "relevance": 1.0,
+          "snippet": "Topological qubit is increasingly deployed in secure communication links. However, deployments still suffer from disorder at the semiconductor-superconductor interface; this remains an open problem in multi-qubit arrays. We describe PrismScope, a novel approach to readout error based on cryo-CMOS control electronics. The method reduces gate infidelity by 21% and achieves coherence that is…"
+        },
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1038/topologi.2023.405524",
+          "documentId": "97b94b07-e112-5611-ba4f-20fe8688673c",
+          "title": "Scaling topological qubit with pulse-level control",
+          "authors": "Daniel Watanabe, Dmitry López, Freya Papadopoulos",
+          "organization": "Microsoft Research",
+          "organizationCountry": "US",
+          "publishedOn": "2023-03-24",
+          "url": "https://doi.org/10.1038/topologi.2023.405524",
+          "doi": "10.1038/topologi.2023.405524",
+          "citationCount": 3,
+          "relevance": 1.0,
+          "snippet": "Interest in topological qubit has grown quickly across fault-tolerant computation and adjacent fields. A key bottleneck is reproducibility across fabricated devices, which existing fabrication processs do not address. We introduce MetaSync, a proposed method built on pulse-level control. The method reduces qubit overhead by 46% and achieves error protection built into the hardware on a…"
+        },
+        {
+          "sourceId": "rss",
+          "sourceClass": "NEWS",
+          "externalId": "ieee-spectrum:2025-07-30:14bd3903",
+          "documentId": "e516e2f6-63b4-51f5-893a-e21197be7e66",
+          "title": "TU Delft unveils topological qubit platform for optimisation on near-term devices",
+          "authors": "Ingrid Weber",
+          "organization": null,
+          "organizationCountry": null,
+          "publishedOn": "2025-07-30",
+          "url": "https://www.spectrum.ieee.org/2025/07/tu-delft-unveils-topological-qubit-platform-for-optimisation-on-near-ter",
+          "doi": null,
+          "citationCount": null,
+          "relevance": 1.0,
+          "snippet": "TU Delft, based in the Netherlands, said this week that its topological qubit programme targets optimisation on near-term devices. The company claims the system enables fewer physical qubits per logical qubit and reduces qubit overhead by 34% compared with previously reported devices. However, disorder at the semiconductor-superconductor interface remains challenging before wide deployment…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2505.23167",
+          "documentId": "a149c2ab-e77a-5ae6-8e06-7a41f01d75fe",
+          "title": "QuantaForge: revisiting readout error for topological qubit",
+          "authors": "Olga Petrov, Lars Nikolaidis, Chloé Nikolaidis, Lars Park, Noah Fernández",
+          "organization": "TU Delft",
+          "organizationCountry": "NL",
+          "publishedOn": "2025-05-05",
+          "url": "https://arxiv.org/abs/2505.23167",
+          "doi": null,
+          "citationCount": 1,
+          "relevance": 1.0,
+          "snippet": "Topological qubit promises to change how quantum simulation of molecules is engineered. However, deployments still suffer from disorder at the semiconductor-superconductor interface; this remains an open problem in noisy intermediate-scale devices. We introduce QuantaForge, a proposed method built on pulse-level control. We show that QuantaForge enables fewer physical qubits per logical qubit and…"
+        },
+        {
+          "sourceId": "rss",
+          "sourceClass": "NEWS",
+          "externalId": "science-business:2024-11-26:c39542c1",
+          "documentId": "f615327d-e288-5b18-8378-eda2555eef11",
+          "title": "Xanadu says its neutral atom qubit pilot cut gate infidelity by 46 percent",
+          "authors": "Rajesh Martínez, Julia Volkov",
+          "organization": null,
+          "organizationCountry": null,
+          "publishedOn": "2024-11-26",
+          "url": "https://www.sciencebusiness.net/2024/11/xanadu-says-its-neutral-atom-qubit-pilot-cut-gate-infidelity-by-46-perce",
+          "doi": null,
+          "citationCount": null,
+          "relevance": 1.0,
+          "snippet": "Xanadu, based in Canada, said this week that its neutral atom qubit programme targets fault-tolerant computation. The company claims the system enables thousands of identical qubits in a single trap and reduces gate infidelity by 46% compared with superconducting transmon baselines. However, atom loss during rearrangement cycles remains challenging before wide deployment, analysts caution. ETH…"
+        },
+        {
+          "sourceId": "uspto",
+          "sourceClass": "PATENT",
+          "externalId": "WO2025/561732A1",
+          "documentId": "54e83fbf-5e7b-5ace-9937-4d105201235d",
+          "title": "Apparatus for calibrating Majorana zero mode qubit using error mitigation",
+          "authors": "Laura Weber",
+          "organization": "Microsoft Research",
+          "organizationCountry": "US",
+          "publishedOn": "2025-09-30",
+          "url": "https://patents.google.com/patent/WO2025/561732A1/en",
+          "doi": null,
+          "citationCount": 0,
+          "relevance": 1.0,
+          "snippet": "A device for topological qubit is disclosed. In known systems, reproducibility across fabricated devices is limited by the available scalability, and reliable operation remains challenging. The disclosed device comprises a control unit and a error mitigation stage configured to monitor scalability during operation. The described arrangement enables fewer physical qubits per logical qubit and…"
+        }
+      ]
+    },
+    {
+      "rank": 4,
+      "trendKey": "distribution shift",
+      "title": "distribution shift",
+      "definition": "In known systems, draft-target mismatch under distribution shift is limited by the available memory footprint, and reliable operation remains challenging.",
+      "aliases": [],
+      "motivation": {
+        "problem": "Current inference engines suffer from draft-target mismatch under distribution shift, and closing this gap is still an open problem. In known systems, draft-target mismatch under distribution shift is limited by the available memory footprint, and reliable operation remains challenging.",
+        "benefit": "The approach achieves a 1.8x speedup while reducing cost per token by 18%. The proposed method is compared against the state of the art on an internal production trace.",
+        "attributions": [
+          {
+            "statement": "problem",
+            "evidenceIndex": 0
+          },
+          {
+            "statement": "problem",
+            "evidenceIndex": 2
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 0
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 0
+          }
+        ]
+      },
+      "caseExample": {
+        "organization": "Hugging Face",
+        "organizationType": "COMPANY",
+        "country": "US",
+        "summary": "A training recipe for speculative decoding is disclosed. In known systems, draft-target mismatch under distribution shift is limited by the available memory footprint, and reliable operation remains challenging. The disclosed training recipe comprises a control unit and a…",
+        "evidenceIndex": 2
+      },
+      "score": 54.664914,
+      "confidence": 0.626036,
+      "lowEvidence": false,
+      "indicators": [
+        {
+          "name": "novelty",
+          "value": 0.716531,
+          "weight": 0.2,
+          "multiplier": 0.935507,
+          "shortfallShare": 0.110385,
+          "explanation": "Первое достоверное упоминание — 2025 г.; возраст темы 1 г. при τ = 3.0; novelty = exp(−1/3.0) = 0.717.",
+          "diagnostics": {
+            "age": 1,
+            "credible": true,
+            "currentYear": 2026,
+            "firstYear": 2025,
+            "tau": 3.0
+          }
+        },
+        {
+          "name": "growth",
+          "value": 0.36907,
+          "weight": 0.3,
+          "multiplier": 0.741537,
+          "shortfallShare": 0.495126,
+          "explanation": "Лог-линейный наклон β = 0.405 (R² = 1.000) по 2 периодам с данными: это ≈ ×1.50 документов за период; growth = 0.405/ln 3.0 = 0.369. Ускорение β_поздн − β_ранн = 0.405.",
+          "diagnostics": {
+            "acceleration": 0.4054651081081645,
+            "betaEarly": 0.0,
+            "betaRecent": 0.4054651081081645,
+            "burst_baselineRate": 0.006430868167202572,
+            "burst_burstingPeriods": 0,
+            "burst_startPeriod": "",
+            "burst_weight": 0.0,
+            "dodGrowthRate": 0.7054505700452915,
+            "dodMean": 0.001176821447592961,
+            "dovGrowthRate": 0.7054505700452915,
+            "dovMean": 0.001176821447592961,
+            "gMax": 3.0,
+            "intercept": -2.145108576197206,
+            "lifecycleRule": "embryonic",
+            "lnGMax": 1.0986122886681098,
+            "periodFactor": 1.5000000000000002,
+            "pointsUsed": 2,
+            "r2": 1.0,
+            "slope": 0.4054651081081645,
+            "weakSignalQuadrant": true
+          }
+        },
+        {
+          "name": "diffusion",
+          "value": 0.385762,
+          "weight": 0.15,
+          "multiplier": 0.866858,
+          "shortfallShare": 0.236577,
+          "explanation": "Тема встречается в 2 из 5 активных классов источников (нормированная энтропия 0.395), у 4 организаций (0.409 от O_ref = 50) и на 2 площадках (0.337 от V_ref = 25); diffusion = 0.386.",
+          "diagnostics": {
+            "activeSourceClasses": 5,
+            "entropy": 0.39548848910372325,
+            "entropyRaw": 0.6365141682948128,
+            "orgBreadth": 0.4093360343955374,
+            "orgCount": 4,
+            "orgRef": 50,
+            "sourceClassCount": 2,
+            "venueBreadth": 0.3371945170584954,
+            "venueCount": 2,
+            "venueRef": 25
+          }
+        },
+        {
+          "name": "weakness",
+          "value": 0.768718,
+          "weight": 0.15,
+          "multiplier": 0.961314,
+          "shortfallShare": 0.065328,
+          "explanation": "За последние 2 периода тема набрала 3 документов при максимуме 400 по направлению: громкость 0.231, weakness = 1 − 0.231 = 0.769.",
+          "diagnostics": {
+            "floor": 5,
+            "loudness": 0.23128182887603801,
+            "recentDocuments": 3,
+            "recentMax": 400,
+            "recentMaxObserved": 400,
+            "window": 2
+          }
+        },
+        {
+          "name": "coherence",
+          "value": 0.681323,
+          "weight": 0.1,
+          "multiplier": 0.962355,
+          "shortfallShare": 0.063535,
+          "explanation": "Семантическая связность 0.802 (документы темы, 1 терм.), лексическая связность (NPMI по 0 парам) 0.500; coherence = 0.60·0.802 + 0.40·0.500 = 0.681.",
+          "diagnostics": {
+            "cEmb": 0.8022049263344609,
+            "cNpmi": 0.5,
+            "embeddingBasis": "документы темы",
+            "meanNpmi": 0.0,
+            "memberCount": 1,
+            "pairsUsed": 0
+          }
+        },
+        {
+          "name": "impact",
+          "value": 0.839087,
+          "weight": 0.1,
+          "multiplier": 0.982609,
+          "shortfallShare": 0.029049,
+          "explanation": "Средняя цитируемость 3.67 цит./год (3 док. с данными) → citationVel = 0.642; патентов 1/3 (0.333) → patentRatio = 1.000; корпоративная аффилиация у 2/3 (0.667) → industry = 1.000; impact = 0.839.",
+          "diagnostics": {
+            "citationVelocity": 0.6424154792838105,
+            "cpy": 3.6666666666666665,
+            "cpyRef": 10.0,
+            "documentsWithCitations": 3,
+            "industry": 1.0,
+            "industryDocuments": 2,
+            "industryShare": 0.6666666666666666,
+            "patentDocuments": 1,
+            "patentRatio": 1.0,
+            "patentShare": 0.3333333333333333
+          }
+        }
+      ],
+      "lifecycleStage": "EMBRYONIC",
+      "firstMentionYear": 2025,
+      "totalDocuments": 3,
+      "burst": null,
+      "timeline": [
+        {
+          "period": "2018",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2019",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2020",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2021",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2022",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2023",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2024",
+          "documentCount": 1,
+          "dov": 0.0034798534798534796,
+          "dod": 0.0034798534798534796
+        },
+        {
+          "period": "2025",
+          "documentCount": 2,
+          "dov": 0.005934718100890208,
+          "dod": 0.005934718100890208
+        }
+      ],
+      "evidence": [
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2407.51711",
+          "documentId": "e34bb4e9-7965-519e-ae53-f9ba98098b27",
+          "title": "A modular framework for speculative decoding in on-device assistants",
+          "authors": "Hiroshi Dubois, Wei Lindqvist",
+          "organization": "University of Cambridge",
+          "organizationCountry": "GB",
+          "publishedOn": "2024-07-21",
+          "url": "https://arxiv.org/abs/2407.51711",
+          "doi": null,
+          "citationCount": 21,
+          "relevance": 1.0,
+          "snippet": "Speculative decoding is increasingly deployed in on-device assistants. Current inference engines suffer from draft-target mismatch under distribution shift, and closing this gap is still an open problem. We introduce VertexLite, a proposed method built on grouped-query attention. The approach achieves a 1.8x speedup while reducing cost per token by 18%. The proposed method is compared against the…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2510.63102",
+          "documentId": "e1401e44-56bb-5f72-b305-875e000590ae",
+          "title": "Scaling speculative decoding with knowledge distillation",
+          "authors": "Miguel Tanaka, Fatima Kovács",
+          "organization": "Mistral AI",
+          "organizationCountry": "FR",
+          "publishedOn": "2025-10-24",
+          "url": "https://arxiv.org/abs/2510.63102",
+          "doi": null,
+          "citationCount": 6,
+          "relevance": 1.0,
+          "snippet": "Speculative decoding promises to change how enterprise search is engineered. However, deployments still suffer from draft-target mismatch under distribution shift; this remains an open problem in long-context workloads. This work presents DeltaMesh, which applies knowledge distillation to throughput. Our approach enables better accelerator utilisation during serving and reduces training cost by…"
+        },
+        {
+          "sourceId": "uspto",
+          "sourceClass": "PATENT",
+          "externalId": "CN113034389B",
+          "documentId": "cfaea133-fb03-521f-83cd-5ef059b63997",
+          "title": "Method for monitoring speculative decoding in enterprise search",
+          "authors": "Daniel Novák, Olga Kim, Chloé Rao",
+          "organization": "Hugging Face",
+          "organizationCountry": "US",
+          "publishedOn": "2025-05-19",
+          "url": "https://patents.google.com/patent/CN113034389B/en",
+          "doi": null,
+          "citationCount": 2,
+          "relevance": 1.0,
+          "snippet": "A training recipe for speculative decoding is disclosed. In known systems, draft-target mismatch under distribution shift is limited by the available memory footprint, and reliable operation remains challenging. The disclosed training recipe comprises a control unit and a low-rank adaptation stage configured to monitor memory footprint during operation. The described arrangement enables better…"
+        }
+      ]
+    },
+    {
+      "rank": 5,
+      "trendKey": "mechanistic interpretability",
+      "title": "mechanistic interpretability",
+      "definition": "Тема «mechanistic interpretability» выделена по 8 документам за 2022–2025 гг.; варианты названия: auditable failure analysis, mechanistic interpretability baselines, open-source implementation of circuit-level",
+      "aliases": [
+        "auditable failure analysis",
+        "mechanistic interpretability baselines",
+        "open-source implementation of circuit-level",
+        "open-source implementation of mechanistic",
+        "scaling causal tracing beyond",
+        "toy models",
+        "causal tracing",
+        "scaling causal",
+        "tracing beyond",
+        "causal tracing beyond toy",
+        "scaling causal tracing",
+        "tracing beyond toy models"
+      ],
+      "motivation": {
+        "problem": "However, deployments still suffer from scaling causal tracing beyond toy models; this remains an open problem in low-latency serving. Existing inference engines are limited by scaling causal tracing beyond toy models, which becomes a bottleneck in constrained edge hardware.",
+        "benefit": "We show that PrismCore enables auditable failure analysis before deployment and outperforms strong transformer baselines under low-latency serving. The method reduces training cost by 24% and achieves causal explanations of model behaviour at the circuit level on an internal production trace.",
+        "attributions": [
+          {
+            "statement": "problem",
+            "evidenceIndex": 1
+          },
+          {
+            "statement": "problem",
+            "evidenceIndex": 0
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 1
+          },
+          {
+            "statement": "benefit",
+            "evidenceIndex": 0
+          }
+        ]
+      },
+      "caseExample": {
+        "organization": "Meta AI Research",
+        "organizationType": "COMPANY",
+        "country": "US",
+        "summary": "Mechanistic interpretability has become a central building block of code assistance. However, deployments still suffer from scaling causal tracing beyond toy models; this remains an open problem in low-latency serving. We introduce PrismCore, a proposed method built on…",
+        "evidenceIndex": 1
+      },
+      "score": 53.281143,
+      "confidence": 0.973294,
+      "lowEvidence": false,
+      "indicators": [
+        {
+          "name": "novelty",
+          "value": 0.367879,
+          "weight": 0.2,
+          "multiplier": 0.818731,
+          "shortfallShare": 0.317668,
+          "explanation": "Первое достоверное упоминание — 2023 г.; возраст темы 3 г. при τ = 3.0; novelty = exp(−3/3.0) = 0.368.",
+          "diagnostics": {
+            "age": 3,
+            "credible": true,
+            "currentYear": 2026,
+            "firstYear": 2023,
+            "tau": 3.0
+          }
+        },
+        {
+          "name": "growth",
+          "value": 0.473814,
+          "weight": 0.3,
+          "multiplier": 0.79925,
+          "shortfallShare": 0.355919,
+          "explanation": "Лог-линейный наклон β = 0.521 (R² = 0.988) по 4 периодам с данными: это ≈ ×1.68 документов за период; growth = 0.521/ln 3.0 = 0.474. Ускорение β_поздн − β_ранн = 0.521.",
+          "diagnostics": {
+            "acceleration": 0.5205379370888767,
+            "betaEarly": 0.0,
+            "betaRecent": 0.5205379370888767,
+            "burst_baselineRate": 0.006430868167202572,
+            "burst_burstingPeriods": 2,
+            "burst_startPeriod": "2024",
+            "burst_weight": 2.5393800067390573,
+            "dodGrowthRate": 0.669240121367341,
+            "dodMean": 0.006877758546782101,
+            "dovGrowthRate": 0.27595411989905383,
+            "dovMean": 0.032869260167688395,
+            "gMax": 3.0,
+            "intercept": -1.9383107121296164,
+            "lifecycleRule": "accelerating",
+            "lnGMax": 1.0986122886681098,
+            "periodFactor": 1.6829327181692992,
+            "pointsUsed": 4,
+            "r2": 0.987930007713903,
+            "slope": 0.5205379370888767,
+            "weakSignalQuadrant": true
+          }
+        },
+        {
+          "name": "diffusion",
+          "value": 0.762116,
+          "weight": 0.15,
+          "multiplier": 0.960071,
+          "shortfallShare": 0.064722,
+          "explanation": "Тема встречается в 4 из 5 активных классов источников (нормированная энтропия 0.829), у 18 организаций (0.749 от O_ref = 50) и на 8 площадках (0.674 от V_ref = 25); diffusion = 0.762.",
+          "diagnostics": {
+            "activeSourceClasses": 5,
+            "entropy": 0.8285333834977017,
+            "entropyRaw": 1.3334730391185028,
+            "orgBreadth": 0.7488732345249669,
+            "orgCount": 18,
+            "orgRef": 50,
+            "sourceClassCount": 4,
+            "venueBreadth": 0.674389034116991,
+            "venueCount": 8,
+            "venueRef": 25
+          }
+        },
+        {
+          "name": "weakness",
+          "value": 0.559714,
+          "weight": 0.15,
+          "multiplier": 0.916632,
+          "shortfallShare": 0.138264,
+          "explanation": "За последние 2 периода тема набрала 13 документов при максимуме 400 по направлению: громкость 0.440, weakness = 1 − 0.440 = 0.560.",
+          "diagnostics": {
+            "floor": 5,
+            "loudness": 0.440286004776834,
+            "recentDocuments": 13,
+            "recentMax": 400,
+            "recentMaxObserved": 400,
+            "window": 2
+          }
+        },
+        {
+          "name": "coherence",
+          "value": 0.904414,
+          "weight": 0.1,
+          "multiplier": 0.990004,
+          "shortfallShare": 0.015958,
+          "explanation": "Семантическая связность 0.876 (термины кластера, 9 терм.), лексическая связность (NPMI по 10 парам) 0.947; coherence = 0.60·0.876 + 0.40·0.947 = 0.904.",
+          "diagnostics": {
+            "cEmb": 0.8758313475686539,
+            "cNpmi": 0.9472890728719754,
+            "embeddingBasis": "термины кластера",
+            "meanNpmi": 0.8945781457439507,
+            "memberCount": 9,
+            "pairsUsed": 10
+          }
+        },
+        {
+          "name": "impact",
+          "value": 0.508337,
+          "weight": 0.1,
+          "multiplier": 0.934577,
+          "shortfallShare": 0.107469,
+          "explanation": "Средняя цитируемость 5.53 цит./год (10 док. с данными) → citationVel = 0.782; патентов 0/16 (0.000) → patentRatio = 0.000; корпоративная аффилиация у 5/16 (0.312) → industry = 0.625; impact = 0.508.",
+          "diagnostics": {
+            "citationVelocity": 0.7824160211384857,
+            "cpy": 5.528333333333333,
+            "cpyRef": 10.0,
+            "documentsWithCitations": 10,
+            "industry": 0.625,
+            "industryDocuments": 5,
+            "industryShare": 0.3125,
+            "patentDocuments": 0,
+            "patentRatio": 0.0,
+            "patentShare": 0.0
+          }
+        }
+      ],
+      "lifecycleStage": "ACCELERATING",
+      "firstMentionYear": 2023,
+      "totalDocuments": 16,
+      "burst": {
+        "startPeriod": "2024",
+        "weight": 2.5393800067390573
+      },
+      "timeline": [
+        {
+          "period": "2018",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2019",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2020",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2021",
+          "documentCount": 0,
+          "dov": 0.0,
+          "dod": 0.0
+        },
+        {
+          "period": "2022",
+          "documentCount": 1,
+          "dov": 0.0584375,
+          "dod": 0.0053125
+        },
+        {
+          "period": "2023",
+          "documentCount": 2,
+          "dov": 0.05142857142857143,
+          "dod": 0.008571428571428572
+        },
+        {
+          "period": "2024",
+          "documentCount": 5,
+          "dov": 0.05219780219780219,
+          "dod": 0.0173992673992674
+        },
+        {
+          "period": "2025",
+          "documentCount": 8,
+          "dov": 0.10089020771513353,
+          "dod": 0.02373887240356083
+        }
+      ],
+      "evidence": [
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1016/mechanis.2024.900160",
+          "documentId": "fa017a8e-5c71-5994-93ae-97af7bce407f",
+          "title": "Mechanistic interpretability meets quantisation-aware training",
+          "authors": "Michael Chen, Emily García, Zsófia Demir",
+          "organization": "University of Oxford",
+          "organizationCountry": "GB",
+          "publishedOn": "2024-02-14",
+          "url": "https://doi.org/10.1016/mechanis.2024.900160",
+          "doi": "10.1016/mechanis.2024.900160",
+          "citationCount": 24,
+          "relevance": 1.0,
+          "snippet": "Interest in circuit-level interpretability has grown quickly across enterprise search and adjacent fields. Existing inference engines are limited by scaling causal tracing beyond toy models, which becomes a bottleneck in constrained edge hardware. We introduce HelioWave, a proposed method built on quantisation-aware training. The method reduces training cost by 24% and achieves causal…"
+        },
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1109/mechanis.2022.192676",
+          "documentId": "6e6b989c-1aa5-5ed7-b65c-0b792b89504a",
+          "title": "Measuring calibration in mechanistic interpretability deployments",
+          "authors": "Lars Zhang, Omar Huang, Priya Watanabe, Carmen Ferrari, Álvaro Oliveira",
+          "organization": "Meta AI Research",
+          "organizationCountry": "US",
+          "publishedOn": "2022-04-04",
+          "url": "https://doi.org/10.1109/mechanis.2022.192676",
+          "doi": "10.1109/mechanis.2022.192676",
+          "citationCount": 61,
+          "relevance": 1.0,
+          "snippet": "Mechanistic interpretability has become a central building block of code assistance. However, deployments still suffer from scaling causal tracing beyond toy models; this remains an open problem in low-latency serving. We introduce PrismCore, a proposed method built on grouped-query attention. We show that PrismCore enables auditable failure analysis before deployment and outperforms strong…"
+        },
+        {
+          "sourceId": "crossref",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "10.1021/mechanis.2023.259859",
+          "documentId": "ee86a8e8-8929-5cb0-b930-3ff6180a6a97",
+          "title": "Scaling mechanistic interpretability with low-rank adaptation",
+          "authors": "Freya Okafor, Amara Watanabe, Yara Kowalski, Ananya Choi, Jonas Huang",
+          "organization": "EleutherAI",
+          "organizationCountry": "US",
+          "publishedOn": "2023-01-22",
+          "url": "https://doi.org/10.1021/mechanis.2023.259859",
+          "doi": "10.1021/mechanis.2023.259859",
+          "citationCount": 39,
+          "relevance": 1.0,
+          "snippet": "Circuit-level interpretability is increasingly deployed in on-device assistants. However, the absence of ground truth for circuit-level claims remains challenging in long-context workloads. We describe TempoScope, a novel approach to calibration based on low-rank adaptation. The method reduces training cost by 18% and achieves targeted editing of learned features on a held-out multilingual…"
+        },
+        {
+          "sourceId": "openalex",
+          "sourceClass": "JOURNAL_ARTICLE",
+          "externalId": "W2094110056",
+          "documentId": "4a083953-4fd9-5fec-b9f6-036c5fcb1f9c",
+          "title": "Grouped-query attention improves the calibration of circuit-level interpretability",
+          "authors": "Emily Müller, Lucas Rao, Seung-hoon López",
+          "organization": "Moscow Institute of Physics and Technology",
+          "organizationCountry": "RU",
+          "publishedOn": "2025-01-18",
+          "url": "https://openalex.org/W2094110056",
+          "doi": "10.1007/mechanis.2025.396350",
+          "citationCount": 12,
+          "relevance": 1.0,
+          "snippet": "Mechanistic interpretability promises to change how code assistance is engineered. Existing evaluation harnesss are limited by polysemantic neurons that resist single-feature explanations, which becomes a bottleneck in multi-tenant clusters. We describe HyperGraph, a novel approach to calibration based on grouped-query attention. We show that HyperGraph enables targeted editing of learned…"
+        },
+        {
+          "sourceId": "github",
+          "sourceClass": "CODE_REPOSITORY",
+          "externalId": "mlfoundations/awesome-mechanistic-interpretabi",
+          "documentId": "6542b6c2-b4d7-5e14-8fde-9547c1cb04e5",
+          "title": "awesome-mechanistic-interpretabi: reproducible mechanistic interpretability baselines and datasets",
+          "authors": "Seung-hoon Lee, Miguel Nielsen, Carmen Ferrari",
+          "organization": "Huawei Noah's Ark Lab",
+          "organizationCountry": "CN",
+          "publishedOn": "2025-12-15",
+          "url": "https://github.com/mlfoundations/awesome-mechanistic-interpretabi",
+          "doi": null,
+          "citationCount": null,
+          "relevance": 1.0,
+          "snippet": "awesome-mechanistic-interpretabi is an open-source implementation of circuit-level interpretability for enterprise search, maintained by contributors from Peking University. The project provides curriculum sampling, reproducible baselines and a test suite covering calibration. However, calibration is limited by scaling causal tracing beyond toy models and remains challenging outside curated…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2501.75939",
+          "documentId": "40a0b5d0-e4be-5ab7-8dcd-df5663581ed2",
+          "title": "Efficient circuit-level interpretability via knowledge distillation",
+          "authors": "Céline Hoffmann, Ingrid Jansen, Fatima Sharma, Ming Martínez, Anna Banerjee, Eleni Nielsen",
+          "organization": "Nokia Bell Labs",
+          "organizationCountry": "FI",
+          "publishedOn": "2025-01-24",
+          "url": "https://arxiv.org/abs/2501.75939",
+          "doi": null,
+          "citationCount": 9,
+          "relevance": 1.0,
+          "snippet": "Mechanistic interpretability is increasingly deployed in multilingual summarisation. Existing training recipes are limited by the absence of ground truth for circuit-level claims, which becomes a bottleneck in low-latency serving. In this paper we present HaloPrime, a novel approach that combines knowledge distillation with quantisation-aware training. We show that HaloPrime outperforms a tuned…"
+        },
+        {
+          "sourceId": "arxiv",
+          "sourceClass": "PREPRINT",
+          "externalId": "2505.63193",
+          "documentId": "76977c98-1fb0-54de-b6c5-054aa87285e5",
+          "title": "Measuring memory footprint in mechanistic interpretability deployments",
+          "authors": "Ahmed Yang, Zsófia Lefèvre, Sarah Nielsen",
+          "organization": "Google DeepMind",
+          "organizationCountry": "GB",
+          "publishedOn": "2025-05-24",
+          "url": "https://arxiv.org/abs/2505.63193",
+          "doi": null,
+          "citationCount": 6,
+          "relevance": 1.0,
+          "snippet": "Recent work on mechanistic interpretability has renewed interest in memory footprint for multilingual summarisation. A key bottleneck is polysemantic neurons that resist single-feature explanations, which existing pipelines do not address. This work presents HaloLite, which applies grouped-query attention to memory footprint. The method reduces training cost by 53% and achieves causal…"
+        },
+        {
+          "sourceId": "github",
+          "sourceClass": "CODE_REPOSITORY",
+          "externalId": "facebookresearch/mechanistic-interpretabi-core",
+          "documentId": "c3405405-933d-5fba-b1c4-477630f54730",
+          "title": "mechanistic-interpretabi-core: reference implementation of mechanistic interpretability for enterprise search",
+          "authors": "Sarah Korhonen, Elif Rodríguez",
+          "organization": "EleutherAI",
+          "organizationCountry": "US",
+          "publishedOn": "2025-07-12",
+          "url": "https://github.com/facebookresearch/mechanistic-interpretabi-core",
+          "doi": null,
+          "citationCount": null,
+          "relevance": 1.0,
+          "snippet": "mechanistic-interpretabi-core is an open-source implementation of mechanistic interpretability for enterprise search, maintained by contributors from EleutherAI. The project provides grouped-query attention, reproducible baselines and a test suite covering throughput. However, throughput is limited by polysemantic neurons that resist single-feature explanations and remains challenging outside…"
+        }
+      ]
+    }
+  ]
+}

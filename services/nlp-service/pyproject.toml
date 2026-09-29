@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "horizon-nlp"
+version = "1.0.0"
+description = "Horizon NLP service — локальный вывод моделей: перевод на русский и семантический фильтр кандидатов"
+requires-python = ">=3.12"
+license = { text = "Proprietary" }
+
+# Модели держатся локально (ТЗ §3.1: «предпочтительно локальная развёртка»). Тяжёлые зависимости
+# живут только здесь: аналитический движок обязан оставаться детерминированным и лёгким, поэтому
+# torch в его образ не попадает — вывод модели вынесен за границу HTTP (ADR-0017).
+dependencies = [
+    # 0.142 включает автотелеметрию и не стартует при OTLP по gRPC, как на стенде.
+    "fastapi>=0.110,<0.142",
+    "uvicorn[standard]>=0.27,<1",
+    "pydantic>=2.6,<3",
+    "pydantic-settings>=2.2,<3",
+    "httpx>=0.27,<1",
+    "structlog>=24.1",
+    "prometheus-client>=0.20,<1",
+    "transformers>=4.40,<6",
+    "sentencepiece>=0.2,<1",
+    "sacremoses>=0.1,<1",
+    "langgraph>=0.4,<2",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0,<9", "httpx>=0.27,<1", "ruff>=0.4,<1", "mypy>=1.9,<2"]
+
+[tool.setuptools]
+package-dir = { "" = "src" }
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "W", "F", "I", "N", "UP", "B", "C4", "SIM", "RUF", "PTH", "D"]
+ignore = ["D203", "D213", "E501", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D100", "D101", "D102", "D103", "D104"]
+# Схемы HTTP-границы называют поля так, как они идут в JSON, — camelCase. Это соглашение всего
+# проекта (`contracts/`), и переименование ради стиля Python сломало бы контракт.
+"src/horizon_nlp/api.py" = ["N815"]
+"api.py" = ["N815"]
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-q --strict-markers"
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+warn_unused_ignores = true
+
+# Веса и их библиотеки типов не поставляют. Гейт при этом обязан оставаться быстрым: `torch` —
+# полтора гигабайта, и ставить его на каждую проверку значит не проверять ничего. Поэтому модельные
+# библиотеки объявлены нетипизированными, а импортируются они внутри функций — граница между
+# «логикой сервиса» и «выводом модели» проходит ровно здесь.
+[[tool.mypy.overrides]]
+module = ["transformers.*", "torch.*", "uvicorn.*"]
+ignore_missing_imports = true

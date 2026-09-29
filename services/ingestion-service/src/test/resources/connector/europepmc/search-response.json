@@ -1,0 +1,404 @@
+{
+ "version": "6.9",
+ "hitCount": 8284,
+ "nextCursorMark": "AoIIQKit3Cg1NjMxMTcxOA==",
+ "nextPageUrl": "https://www.ebi.ac.uk/europepmc/webservices/rest/search?query=\"federated learning\" AND SRC:MED AND FIRST_PDATE:[2024-01-01 TO 2026-09-18]&cursorMark=AoIIQKit3Cg1NjMxMTcxOA==&resultType=core&pageSize=2&format=json",
+ "request": {
+  "queryString": "\"federated learning\" AND SRC:MED AND FIRST_PDATE:[2024-01-01 TO 2026-09-18]",
+  "resultType": "core",
+  "cursorMark": "*",
+  "pageSize": 2,
+  "sort": "",
+  "synonym": false
+ },
+ "resultList": {
+  "result": [
+   {
+    "id": "42055972",
+    "source": "MED",
+    "pmid": "42055972",
+    "doi": "10.1109/tpami.2026.3688672",
+    "title": "Boosting the Performance of Decentralized Federated Learning via Catalyst Acceleration.",
+    "authorString": "Li Q, Zhang M, Liu Y, Yin Q, Shen L, Cao X.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Li Q",
+       "lastName": "Li",
+       "firstName": "Qinglun",
+       "initials": "Q"
+      },
+      {
+       "fullName": "Zhang M",
+       "lastName": "Zhang",
+       "firstName": "Miao",
+       "initials": "M",
+       "authorId": {
+        "type": "ORCID",
+        "value": "0000-0003-1839-3079"
+       }
+      },
+      {
+       "fullName": "Liu Y",
+       "lastName": "Liu",
+       "firstName": "Yingqi",
+       "initials": "Y"
+      },
+      {
+       "fullName": "Yin Q",
+       "lastName": "Yin",
+       "firstName": "Quanjun",
+       "initials": "Q"
+      },
+      {
+       "fullName": "Shen L",
+       "lastName": "Shen",
+       "firstName": "Li",
+       "initials": "L",
+       "authorId": {
+        "type": "ORCID",
+        "value": "0000-0001-5659-3464"
+       }
+      },
+      {
+       "fullName": "Cao X",
+       "lastName": "Cao",
+       "firstName": "Xiaochun",
+       "initials": "X"
+      }
+     ]
+    },
+    "authorIdList": {
+     "authorId": [
+      {
+       "type": "ORCID",
+       "value": "0000-0001-5659-3464"
+      },
+      {
+       "type": "ORCID",
+       "value": "0000-0003-1839-3079"
+      }
+     ]
+    },
+    "journalInfo": {
+     "issue": "9",
+     "volume": "48",
+     "journalIssueId": 4239236,
+     "dateOfPublication": "2026 Sep",
+     "monthOfPublication": 9,
+     "yearOfPublication": 2026,
+     "journal": {
+      "medlineAbbreviation": "IEEE Trans Pattern Anal Mach Intell",
+      "title": "IEEE transactions on pattern analysis and machine intelligence",
+      "essn": "1939-3539",
+      "issn": "0162-8828",
+      "isoabbreviation": "IEEE Trans Pattern Anal Mach Intell",
+      "nlmid": "9885960"
+     },
+     "printPublicationDate": "2026-09-01"
+    },
+    "pubYear": "2026",
+    "pageInfo": "11139-11150",
+    "abstractText": "Decentralized Federated Learning has emerged as an alternative to centralized architectures due to its faster training, privacy preservation, and reduced communication overhead. In decentralized communication, the server aggregation phase in Centralized Federated Learning shifts to the client side, which means that clients connect with each other in a peer-to-peer manner. However, compared to the centralized mode, data heterogeneity in Decentralized Federated Learning will cause larger variances between aggregated models, which leads to slow convergence in training and poor generalization performance in tests. To address these issues, we introduce Catalyst Acceleration and propose an acceleration Decentralized Federated Learning algorithm called DFedCata. It consists of two main components: the Moreau envelope function, which primarily addresses parameter inconsistencies among clients caused by data heterogeneity, and Nesterov's extrapolation step, which accelerates the aggregation phase. Theoretically, we prove the optimization error bound and generalization error bound of the algorithm, providing a further understanding of the nature of the algorithm and the theoretical perspectives on the hyperparameter choice. Empirically, we demonstrate the advantages of the proposed algorithm in both convergence speed, computational cost, and generalization performance on CIFAR10/100 and Tiny-ImageNet with various non-iid data distributions. Moreover, extensive experiments are conducted to validate the theoretical properties of DFedCata, showing strong consistency between theory and empirical observations.",
+    "publicationStatus": "ppublish",
+    "language": "eng",
+    "pubModel": "Print",
+    "pubTypeList": {
+     "pubType": [
+      "Journal Article"
+     ]
+    },
+    "grantsList": {
+     "grant": [
+      {
+       "agency": "Basic and Applied Basic Research Foundation of Guangdong Province",
+       "grantId": "2026B1515020071",
+       "orderIn": 0
+      },
+      {
+       "agency": "Shenzhen Municipal Fundamental Research Program",
+       "grantId": "JCYJ20241202124430041",
+       "orderIn": 0
+      },
+      {
+       "agency": "National Natural Science Foundation of China",
+       "grantId": "62576364",
+       "orderIn": 0
+      }
+     ]
+    },
+    "subsetList": {
+     "subset": [
+      {
+       "code": "IM",
+       "name": "Index Medicus"
+      }
+     ]
+    },
+    "fullTextUrlList": {
+     "fullTextUrl": [
+      {
+       "availability": "Subscription required",
+       "availabilityCode": "S",
+       "documentStyle": "doi",
+       "site": "DOI",
+       "url": "https://doi.org/10.1109/TPAMI.2026.3688672"
+      }
+     ]
+    },
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "inPMC": "N",
+    "citedByCount": 0,
+    "hasReferences": "Y",
+    "hasTextMinedTerms": "Y",
+    "hasDbCrossReferences": "N",
+    "hasPDF": "N",
+    "hasBook": "N",
+    "hasSuppl": "N",
+    "hasLabsLinks": "N",
+    "hasData": "N",
+    "authMan": "N",
+    "epmcAuthMan": "N",
+    "nihAuthMan": "N",
+    "hasTMAccessionNumbers": "N",
+    "dateOfCreation": "2026-04-29",
+    "dateOfRevision": "2026-08-07",
+    "firstPublicationDate": "2026-09-01",
+    "firstIndexDate": "2026-04-30",
+    "hasEvaluations": "N"
+   },
+   {
+    "id": "42660003",
+    "source": "MED",
+    "pmid": "42660003",
+    "doi": "10.1016/j.neunet.2026.109519",
+    "title": "Multi-FedLinks: Highly reliable decentralized multibiometric federated learning links.",
+    "authorString": "Guo J, Mu H, Ren H, Han C, Sun L.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Guo J",
+       "lastName": "Guo",
+       "firstName": "Jian",
+       "initials": "J",
+       "authorAffiliationDetailsList": {
+        "authorAffiliation": [
+         {
+          "affiliation": "School of Computer, Nanjing University of Posts and Telecommunications, Nanjing, 210023, China. Electronic address: guoj@njupt.edu.cn."
+         }
+        ]
+       }
+      },
+      {
+       "fullName": "Mu H",
+       "lastName": "Mu",
+       "firstName": "Hengyu",
+       "initials": "H",
+       "authorAffiliationDetailsList": {
+        "authorAffiliation": [
+         {
+          "affiliation": "School of Computer, Nanjing University of Posts and Telecommunications, Nanjing, 210023, China."
+         }
+        ]
+       }
+      },
+      {
+       "fullName": "Ren H",
+       "lastName": "Ren",
+       "firstName": "Hengyi",
+       "initials": "H",
+       "authorAffiliationDetailsList": {
+        "authorAffiliation": [
+         {
+          "affiliation": "School of Information Science and Technology, Nanjing Forestry University, Nanjing, 210037, China."
+         }
+        ]
+       }
+      },
+      {
+       "fullName": "Han C",
+       "lastName": "Han",
+       "firstName": "Chong",
+       "initials": "C",
+       "authorAffiliationDetailsList": {
+        "authorAffiliation": [
+         {
+          "affiliation": "School of Computer, Nanjing University of Posts and Telecommunications, Nanjing, 210023, China."
+         }
+        ]
+       }
+      },
+      {
+       "fullName": "Sun L",
+       "lastName": "Sun",
+       "firstName": "Lijuan",
+       "initials": "L",
+       "authorAffiliationDetailsList": {
+        "authorAffiliation": [
+         {
+          "affiliation": "School of Computer, Nanjing University of Posts and Telecommunications, Nanjing, 210023, China."
+         }
+        ]
+       }
+      }
+     ]
+    },
+    "journalInfo": {
+     "issue": "Pt B",
+     "volume": "205",
+     "journalIssueId": 4239450,
+     "dateOfPublication": "2026 Aug",
+     "monthOfPublication": 8,
+     "yearOfPublication": 2026,
+     "journal": {
+      "medlineAbbreviation": "Neural Netw",
+      "title": "Neural networks : the official journal of the International Neural Network Society",
+      "essn": "1879-2782",
+      "issn": "0893-6080",
+      "isoabbreviation": "Neural Netw",
+      "nlmid": "8805018"
+     },
+     "printPublicationDate": "2026-08-01"
+    },
+    "pubYear": "2026",
+    "pageInfo": "109519",
+    "abstractText": "In recent years, the recognition accuracies of deep learning-based biometric recognition methods, which rely on large amounts of biometric data for training, have significantly increased. However, in practical applications, biometric data are often distributed in small and fragmented amounts among various local clients. Implementing distributed biometric recognition is therefore greatly important. Most existing distributed biometric methods are implemented by federated learning, and these methods suffer from two problems. (1) The current methods are overwhelmingly limited to addressing distributed single-biometric recognition problems and are not applicable to distributed multibiometric recognition. (2) The conversion from traditional local learning to distributed learning with multiterminal cooperation poses a series of security hazards that have not been addressed. To address these issues, a decentralized multibiometric federated learning links (Multi-FedLinks) model for distributed multibiometric recognition is proposed in this paper. The model consists of multiple FedLink structures, which are resistant to Byzantine attacks. Collaboration among the multiple FedLink structures is implemented with a third-party server to achieve multibiometric federated learning. Experimental results on the NUPT-FPV dataset demonstrate that the superiority of Multi-FedLinks model. Our code can be found in https://github.com/HYMu99/Multi-FedLinks.",
+    "affiliation": "School of Computer, Nanjing University of Posts and Telecommunications, Nanjing, 210023, China. Electronic address: guoj@njupt.edu.cn.",
+    "publicationStatus": "aheadofprint",
+    "language": "eng",
+    "pubModel": "Print-Electronic",
+    "pubTypeList": {
+     "pubType": [
+      "Journal Article"
+     ]
+    },
+    "keywordList": {
+     "keyword": [
+      "Biometrics",
+      "Multimodal",
+      "Federated Learning",
+      "Model Poisoning Attacks"
+     ]
+    },
+    "subsetList": {
+     "subset": [
+      {
+       "code": "IM",
+       "name": "Index Medicus"
+      }
+     ]
+    },
+    "fullTextUrlList": {
+     "fullTextUrl": [
+      {
+       "availability": "Subscription required",
+       "availabilityCode": "S",
+       "documentStyle": "doi",
+       "site": "DOI",
+       "url": "https://doi.org/10.1016/j.neunet.2026.109519"
+      }
+     ]
+    },
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "inPMC": "N",
+    "citedByCount": 0,
+    "hasReferences": "N",
+    "hasTextMinedTerms": "N",
+    "hasDbCrossReferences": "N",
+    "hasPDF": "N",
+    "hasBook": "N",
+    "hasSuppl": "N",
+    "hasLabsLinks": "N",
+    "hasData": "N",
+    "authMan": "N",
+    "epmcAuthMan": "N",
+    "nihAuthMan": "N",
+    "hasTMAccessionNumbers": "N",
+    "dateOfCreation": "2026-08-27",
+    "dateOfRevision": "2026-08-27",
+    "electronicPublicationDate": "2026-08-22",
+    "firstPublicationDate": "2026-08-22",
+    "firstIndexDate": "2026-08-30",
+    "hasEvaluations": "N"
+   },
+   {
+    "id": "PPR1316720",
+    "source": "PPR",
+    "doi": "10.21203/rs.3.rs-10973784/v1",
+    "title": "Native Byzantine-Robust Aggregation for Trustworthy Federated Learning: A C++20 Evaluation of Krum, Multi-Krum, Trimmed Mean, and Coordinate-wise Median",
+    "authorString": "Shagor MSI.",
+    "authorList": {
+     "author": [
+      {
+       "fullName": "Shagor MSI",
+       "lastName": "Shagor",
+       "firstName": "Md Shahanur Islam",
+       "initials": "MSI"
+      }
+     ]
+    },
+    "pubYear": "2026",
+    "abstractText": "<title>Abstract</title>  <p>Federated learning permits collaborative model training without centralizing raw data, but the aggregation step remains vulnerable when authenticated clients submit arbitrary or adversarial model updates. This study evaluates a systems-oriented implementation of Byzantine-robust aggregation designed to make classical defenses practical in Python/PyTorch federated-learning runtimes. The implementation provides C + + 20 kernels for Krum, Multi-Krum, coordinate-wise trimmed mean, and coordinate-wise median, with fail-closed parameter checks, finite-value validation, double-precision accumulation, optional OpenMP parallelism, runtime SIMD dispatch for the Krum distance path, and a binding layer that releases the Python global interpreter lock. Correctness was assessed against independent NumPy references, including even- and odd-client median cases, unsafe Krum configurations, shape mismatch, and non-finite inputs. A deterministic adversarial optimization experiment with 10 clients, including two Byzantine clients using sign-flip and high-variance Gaussian updates, showed that Multi-Krum, trimmed mean, and median each reduced target error below 5% of its initial value after 25 rounds. In CPU benchmarks with seven clients, native Krum achieved 2.41× and 3.09× speedup over NumPy at 1,000 and 100,000 parameters, while Multi-Krum achieved 2.22× and 2.07×. Trimmed mean remained near or below NumPy performance at these sizes, exposing an important algorithm-dependent acceleration boundary. The results show that trustworthy federated-learning aggregation benefits from combining explicit Byzantine assumptions with numerically defensive native systems design rather than treating robustness and performance as separable concerns.</p>",
+    "pubTypeList": {
+     "pubType": [
+      "Preprint"
+     ]
+    },
+    "bookOrReportDetails": {
+     "publisher": "Research Square",
+     "yearOfPublication": 2026
+    },
+    "fullTextUrlList": {
+     "fullTextUrl": [
+      {
+       "availability": "Free",
+       "availabilityCode": "F",
+       "documentStyle": "doi",
+       "site": "DOI",
+       "url": "https://doi.org/10.21203/rs.3.rs-10973784/v1"
+      }
+     ]
+    },
+    "isOpenAccess": "N",
+    "inEPMC": "N",
+    "inPMC": "N",
+    "citedByCount": 0,
+    "hasReferences": "N",
+    "hasTextMinedTerms": "N",
+    "hasDbCrossReferences": "N",
+    "hasPDF": "N",
+    "hasBook": "N",
+    "hasSuppl": "N",
+    "hasLabsLinks": "N",
+    "hasData": "N",
+    "authMan": "N",
+    "epmcAuthMan": "N",
+    "nihAuthMan": "N",
+    "hasTMAccessionNumbers": "N",
+    "dateOfCreation": "2026-09-11",
+    "firstPublicationDate": "2026-09-10",
+    "firstIndexDate": "2026-09-11",
+    "versionList": {
+     "version": [
+      {
+       "id": "PPR1316720",
+       "source": "PPR",
+       "versionNumber": 1,
+       "firstPublishDate": "2026-09-10",
+       "pubTypeList": {
+        "pubType": [
+         "preprint"
+        ]
+       },
+       "hasEvaluations": "N"
+      }
+     ]
+    },
+    "versionNumber": 1,
+    "hasEvaluations": "N"
+   }
+  ]
+ }
+}

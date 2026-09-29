@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://horizon.dev/schemas/corpus-collection-progressed.event.json",
+  "title": "CorpusCollectionProgressed",
+  "description": "Ход сбора корпуса: процент внутри стадии сбора и сколько источников уже ответило. Информационное событие.",
+  "type": "object",
+  "required": ["researchRequestId", "attempt", "percent"],
+  "additionalProperties": false,
+  "properties": {
+    "researchRequestId": { "type": "string", "format": "uuid" },
+    "attempt":           { "type": "integer", "minimum": 1 },
+    "percent":           { "type": "integer", "minimum": 0, "maximum": 100 },
+    "message":           { "type": ["string", "null"], "maxLength": 300 },
+    "sourcesDone":       { "type": "integer", "minimum": 0 },
+    "sourcesTotal":      { "type": "integer", "minimum": 0 },
+    "documentCount":     { "type": "integer", "minimum": 0 }
+  }
+}

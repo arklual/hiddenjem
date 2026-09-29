@@ -1,0 +1,84 @@
+# Нормализация переводов строк: в репозитории всегда LF, в рабочей копии — как в репозитории.
+# Это обязательное условие воспроизводимости сборок и стабильности хешей golden-корпуса.
+* text=auto eol=lf
+
+# ─────────────────────────── Явно текстовые файлы ───────────────────────────
+*.java      text eol=lf diff=java
+*.kt        text eol=lf diff=java
+*.py        text eol=lf diff=python
+*.ts        text eol=lf
+*.tsx       text eol=lf
+*.js        text eol=lf
+*.jsx       text eol=lf
+*.mjs       text eol=lf
+*.cjs       text eol=lf
+*.css       text eol=lf diff=css
+*.scss      text eol=lf diff=css
+*.html      text eol=lf diff=html
+*.md        text eol=lf diff=markdown
+*.json      text eol=lf
+*.yml       text eol=lf
+*.yaml      text eol=lf
+*.xml       text eol=lf
+*.sql       text eol=lf
+*.toml      text eol=lf
+*.ini       text eol=lf
+*.cfg       text eol=lf
+*.properties text eol=lf
+*.txt       text eol=lf
+*.sh        text eol=lf
+*.bash      text eol=lf
+Dockerfile  text eol=lf
+Dockerfile.* text eol=lf
+Makefile    text eol=lf
+*.mk        text eol=lf
+.gitignore  text eol=lf
+.gitattributes text eol=lf
+.editorconfig text eol=lf
+.dockerignore text eol=lf
+
+# Скрипты обязаны иметь LF даже на Windows — иначе `#!/usr/bin/env bash` ломается в контейнере.
+*.sh        text eol=lf
+tools/*     text eol=lf
+
+# ─────────────────────────── Бинарные файлы ───────────────────────────
+*.png       binary
+*.jpg       binary
+*.jpeg      binary
+*.gif       binary
+*.ico       binary
+*.webp      binary
+*.avif      binary
+*.pdf       binary
+*.woff      binary
+*.woff2     binary
+*.ttf       binary
+*.otf       binary
+*.eot       binary
+*.zip       binary
+*.gz        binary
+*.tgz       binary
+*.bz2       binary
+*.xz        binary
+*.jar       binary
+*.war       binary
+*.class     binary
+*.so        binary
+*.dylib     binary
+*.dll       binary
+*.webm      binary
+*.mp4       binary
+
+# ─────────────────────────── Golden-корпус: побайтовая неизменность ───────────────────────────
+# Хеш `fixtures/corpus/documents.jsonl` проверяется в CI (job `contracts`).
+# `-text` запрещает любую нормализацию EOL при checkout/commit на любой платформе.
+fixtures/corpus/**   -text
+fixtures/golden/**   -text
+
+# ─────────────────────────── Генерируемое / вендоренное ───────────────────────────
+# Скрывает шум в diff PR и исключает файлы из статистики языков GitHub.
+deploy/compose/observability/grafana/dashboards/*.json linguist-generated=true
+contracts/openapi/*.yaml            linguist-documentation=false
+**/target/**                        linguist-generated=true
+**/node_modules/**                  linguist-vendored=true
+package-lock.json                   linguist-generated=true -diff

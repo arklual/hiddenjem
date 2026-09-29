@@ -1,0 +1,1219 @@
+# =============================================================================
+#  Horizon — полный локальный стек: инфраструктура + 6 сервисов + наблюдаемость
+# =============================================================================
+#  Запуск (из корня репозитория):
+#      make up                # рекомендуемый путь: подхватывает корневой .env
+#      docker compose -f deploy/compose/docker-compose.yml up -d      # тоже работает
+#
+#  Все относительные пути в этом файле разрешаются относительно КАТАЛОГА ФАЙЛА
+#  (deploy/compose/), поэтому обе команды выше эквивалентны. Не добавляйте
+#  --project-directory: это сместит базу путей и сломает контексты сборки.
+#
+#  Принципы:
+#   * вся конфигурация — переменными окружения (12-factor, NFR-C2);
+#   * секретов в файле нет: значения приходят из .env, у каждой переменной
+#     есть безопасное dev-умолчание (NFR-S2);
+#   * исходники не монтируются: контейнер = артефакт, а не рабочая копия;
+#   * у каждого инфраструктурного сервиса есть healthcheck, приложения ждут
+#     `service_healthy` — иначе стартовые гонки маскируют настоящие ошибки;
+#   * лимиты памяти соответствуют бюджету NFR §9.
+#
+#  Для машины с 2 ядрами / 3 ГБ используйте docker-compose.min.yml (make up-min).
+# =============================================================================
+
+name: horizon
+
+# ─────────────────────────────── Общие фрагменты ───────────────────────────────
+
+x-logging: &default-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+    # Логи структурированные (NFR-O3); ротация не даёт диску разработчика кончиться.
+
+x-security: &hardened
+  # NFR-S9: read-only корень, никаких новых привилегий, ни одной capability.
+  read_only: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+
+x-otel-env: &otel-env
+  # NFR-O1: сквозная трассировка. Эндпоинт одинаков для всех сервисов,
+  # различаются только имя и ресурсные атрибуты.
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4317"
+  OTEL_EXPORTER_OTLP_PROTOCOL: "grpc"
+  OTEL_TRACES_SAMPLER: "${OTEL_TRACES_SAMPLER:-parentbased_traceidratio}"
+  OTEL_TRACES_SAMPLER_ARG: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+  # Метрики собирает Prometheus скрейпом (pull), логи — драйвер docker.
+  # Дублировать их через OTLP значит платить дважды за одни и те же данные.
+  OTEL_METRICS_EXPORTER: "none"
+  OTEL_LOGS_EXPORTER: "none"
+
+x-jvm-env: &jvm-env
+  TZ: "${TZ:-UTC}"
+  # Профилей два, и второй обязателен именно здесь.
+  #
+  # `local` — профиль этого стенда: так и написано в заголовке application-local.yml. Он включает
+  # то, что на промышленном стенде не нужно, — подробный журнал шлюза и мягкие пределы.
+  # Значение переопределяется переменной SPRING_PROFILES_ACTIVE.
+  SPRING_PROFILES_ACTIVE: "${SPRING_PROFILES_ACTIVE:-docker,local}"
+  SPRING_MAIN_BANNER_MODE: "off"
+  # Spring Boot экспортирует трейсы своим OTLP-экспортером по HTTP (4318);
+  # переменная OTEL_EXPORTER_OTLP_ENDPOINT (grpc, 4317) остаётся заданной
+  # для агентов и библиотек, которые читают стандарт OTel напрямую.
+  MANAGEMENT_OTLP_TRACING_ENDPOINT: "http://otel-collector:4318/v1/traces"
+  MANAGEMENT_TRACING_SAMPLING_PROBABILITY: "${OTEL_TRACES_SAMPLER_ARG:-1.0}"
+  MANAGEMENT_ENDPOINTS_WEB_EXPOSURE_INCLUDE: "health,info,prometheus,metrics"
+  MANAGEMENT_ENDPOINT_HEALTH_PROBES_ENABLED: "true"
+  # Локально показываем детали health — это ускоряет отладку. В prod: never.
+  MANAGEMENT_ENDPOINT_HEALTH_SHOW_DETAILS: "always"
+  MANAGEMENT_METRICS_TAGS_APPLICATION: "horizon"
+  # Без гистограммы Micrometer отдаёт только count/sum, и histogram_quantile
+  # считать не из чего: половина правил в alerts.yml и весь раздел Duration
+  # на дашборде RED молча остались бы пустыми.
+  MANAGEMENT_METRICS_DISTRIBUTION_PERCENTILESHISTOGRAM_HTTP_SERVER_REQUESTS: "true"
+  # Явные границы бакетов вокруг порогов NFR-P1 (300 мс / 800 мс):
+  # без них ближайший бакет может оказаться в разы дальше порога,
+  # и p95 будет систематически завышен интерполяцией.
+  MANAGEMENT_METRICS_DISTRIBUTION_SLO_HTTP_SERVER_REQUESTS: "50ms,100ms,200ms,300ms,500ms,800ms,1s,2s,5s"
+  MANAGEMENT_METRICS_DISTRIBUTION_MINIMUMEXPECTEDVALUE_HTTP_SERVER_REQUESTS: "10ms"
+  MANAGEMENT_METRICS_DISTRIBUTION_MAXIMUMEXPECTEDVALUE_HTTP_SERVER_REQUESTS: "10s"
+  # NFR-R7: graceful shutdown укладывается в 30 с.
+  SERVER_SHUTDOWN: "graceful"
+  SPRING_LIFECYCLE_TIMEOUT_PER_SHUTDOWN_PHASE: "25s"
+  HORIZON_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+  HORIZON_LOG_FORMAT: "${HORIZON_LOG_FORMAT:-json}"
+  HORIZON_ENV: "${HORIZON_ENV:-local}"
+  HORIZON_VERSION: "${HORIZON_VERSION:-dev}"
+
+x-kafka-env: &kafka-env
+  SPRING_KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+
+x-redis-env: &redis-env
+  SPRING_DATA_REDIS_HOST: "${REDIS_HOST:-redis}"
+  SPRING_DATA_REDIS_PORT: "6379"
+  SPRING_DATA_REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+  SPRING_DATA_REDIS_DATABASE: "${REDIS_DATABASE:-0}"
+
+# Дефис в имени свойства пишется слитно, а не подчёркиванием. Здесь это обязательно.
+#
+# Для свойства с одним значением подчёркивание сходит с рук: ослабленный поиск сам подставит
+# `_` вместо `-`, и значение доедет. Но подчёркивание вдобавок порождает вложенный ключ —
+# SPRING_DATASOURCE_HIKARI_CONNECTION_TIMEOUT даёт ещё и spring.datasource.hikari.connection.timeout.
+# У HikariDataSource есть свойство `connection` только для чтения (метод getConnection()), и,
+# увидев у него потомка, биндер это свойство читает — то есть открывает соединение. Пул стартует
+# и запечатывается прямо посреди собственной настройки, а следующее свойство падает с «The
+# configuration of the pool is sealed once started»: сервис не поднимался вовсе.
+#
+# Второй случай — свойства-отображения (`management.metrics.distribution.*`): их ключи не
+# запрашиваются по имени, а перечисляются, и ослабленный поиск в перечислении не участвует.
+# Подчёркивание там означает просто «настройка не применилась», молча.
+#
+# Слитная форма верна в обоих случаях, поэтому она принята и там, где подчёркивание сработало бы.
+# Оба отказа разобраны при подготовке стенда.
+x-db-pool-env: &db-pool-env
+  SPRING_DATASOURCE_HIKARI_MAXIMUMPOOLSIZE: "${DB_POOL_MAX_SIZE:-10}"
+  SPRING_DATASOURCE_HIKARI_MINIMUMIDLE: "${DB_POOL_MIN_IDLE:-2}"
+  SPRING_DATASOURCE_HIKARI_CONNECTIONTIMEOUT: "${DB_CONNECTION_TIMEOUT_MS:-3000}"
+
+# =============================================================================
+services:
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  ИНФРАСТРУКТУРА
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────── PostgreSQL 16 + pgvector ───────────────────────────
+  # Один инстанс, схема и пользователь на сервис (ADR-0006, NFR-D1).
+  postgres:
+    image: pgvector/pgvector:pg16
+    container_name: horizon-postgres
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      POSTGRES_DB: "${POSTGRES_DB:-horizon}"
+      POSTGRES_USER: "${POSTGRES_SUPERUSER:-horizon_admin}"
+      POSTGRES_PASSWORD: "${POSTGRES_SUPERUSER_PASSWORD:-horizon_admin_dev_pwd}"
+      # Контрольные суммы страниц: тихое повреждение диска обнаруживается сразу,
+      # а не через месяц в отчёте. Включается только при initdb.
+      POSTGRES_INITDB_ARGS: "--data-checksums"
+      TZ: "${TZ:-UTC}"
+      PGTZ: "${TZ:-UTC}"
+    command:
+      - postgres
+      # Суммарный пул всех сервисов (4 x 10) + init + запас.
+      - -c
+      - max_connections=100
+      - -c
+      - shared_buffers=256MB
+      - -c
+      - effective_cache_size=512MB
+      - -c
+      - work_mem=8MB
+      - -c
+      - maintenance_work_mem=64MB
+      # Логи в stdout в JSON — попадают в общий поток docker (NFR-O3).
+      - -c
+      - log_destination=jsonlog
+      - -c
+      - logging_collector=off
+      # Всё, что дольше 500 мс, обязано быть видно: это будущие инциденты.
+      - -c
+      - log_min_duration_statement=500
+      - -c
+      - log_lock_waits=on
+      - -c
+      - timezone=UTC
+    ports:
+      # Слушаем только на loopback: БД не должна быть доступна из локальной сети.
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -h 127.0.0.1 -U ${POSTGRES_SUPERUSER:-horizon_admin} -d ${POSTGRES_DB:-horizon}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: "${POSTGRES_MEM_LIMIT:-1g}"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Инициализация PostgreSQL (one-shot) ───────────────────────────
+  # Создаёт схемы, роли, расширения и гранты. Таблицы создаёт Flyway каждого сервиса.
+  postgres-init:
+    image: pgvector/pgvector:pg16
+    container_name: horizon-postgres-init
+    # `no`: это одноразовая задача. При перезапуске стека выполняется заново —
+    # все скрипты идемпотентны.
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PGHOST: postgres
+      PGPORT: "5432"
+      PGDATABASE: "${POSTGRES_DB:-horizon}"
+      PGUSER: "${POSTGRES_SUPERUSER:-horizon_admin}"
+      PGPASSWORD: "${POSTGRES_SUPERUSER_PASSWORD:-horizon_admin_dev_pwd}"
+      INGESTION_DB_USER: "${INGESTION_DB_USER:-ingestion_app}"
+      INGESTION_DB_PASSWORD: "${INGESTION_DB_PASSWORD:-ingestion_dev_pwd}"
+      TRENDS_DB_USER: "${TRENDS_DB_USER:-trends_app}"
+      TRENDS_DB_PASSWORD: "${TRENDS_DB_PASSWORD:-trends_dev_pwd}"
+      ANALYTICS_DB_USER: "${ANALYTICS_DB_USER:-analytics_app}"
+      ANALYTICS_DB_PASSWORD: "${ANALYTICS_DB_PASSWORD:-analytics_dev_pwd}"
+    volumes:
+      # Конфигурация, а не исходники: read-only монтирование SQL допустимо.
+      - ./initdb:/initdb:ro
+    entrypoint: ["/bin/bash", "-eu", "-o", "pipefail", "-c"]
+    command:
+      - |
+        echo "[postgres-init] applying $(ls -1 /initdb/*.sql | wc -l) scripts"
+        for f in /initdb/*.sql; do
+          echo "[postgres-init] --> $${f}"
+          psql --quiet --no-psqlrc -v ON_ERROR_STOP=1 \
+               -v ingestion_user="$${INGESTION_DB_USER}" -v ingestion_password="$${INGESTION_DB_PASSWORD}" \
+               -v trends_user="$${TRENDS_DB_USER}"       -v trends_password="$${TRENDS_DB_PASSWORD}" \
+               -v analytics_user="$${ANALYTICS_DB_USER}" -v analytics_password="$${ANALYTICS_DB_PASSWORD}" \
+               -f "$${f}"
+        done
+        echo "[postgres-init] done"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Redpanda (Kafka API) ───────────────────────────
+  # ADR-0005: тот же протокол, что и Kafka, но помещается в бюджет памяти dev-машины.
+  redpanda:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: horizon-redpanda
+    restart: unless-stopped
+    stop_grace_period: 30s
+    command:
+      - redpanda
+      - start
+      # dev-container: один узел, без проверок на production-железо.
+      - --mode=dev-container
+      - --smp=1
+      - --memory=${REDPANDA_SEASTAR_MEM:-768M}
+      - --overprovisioned
+      - --node-id=0
+      - --check=false
+      - --default-log-level=info
+      # Два слушателя: internal — для контейнеров, external — для host-машины
+      # (интеграционные тесты и rpk с ноутбука ходят на localhost:19092).
+      - --kafka-addr=internal://0.0.0.0:9092,external://0.0.0.0:19092
+      - --advertise-kafka-addr=internal://redpanda:9092,external://localhost:${REDPANDA_KAFKA_PORT:-19092}
+      - --rpc-addr=redpanda:33145
+      - --advertise-rpc-addr=redpanda:33145
+      - --schema-registry-addr=internal://0.0.0.0:8081,external://0.0.0.0:18081
+    ports:
+      - "127.0.0.1:${REDPANDA_KAFKA_PORT:-19092}:19092"
+      - "127.0.0.1:${REDPANDA_ADMIN_PORT:-9644}:9644"
+    volumes:
+      - redpanda-data:/var/lib/redpanda/data
+    healthcheck:
+      test: ["CMD-SHELL", "rpk cluster health | grep -E 'Healthy:.+true' || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: "${REDPANDA_MEM_LIMIT:-1g}"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Создание топиков (one-shot) ───────────────────────────
+  # Автосоздание топиков брокером выключено осознанно: топик, созданный опечаткой
+  # в имени, — это молча потерянные сообщения. Список ниже — единственный источник истины
+  # и должен совпадать с contracts/asyncapi/horizon-events.yaml.
+  redpanda-init:
+    image: redpandadata/redpanda:v24.2.7
+    container_name: horizon-redpanda-init
+    restart: "no"
+    depends_on:
+      redpanda:
+        condition: service_healthy
+    environment:
+      BROKERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+      PARTITIONS: "${KAFKA_TOPIC_PARTITIONS:-3}"
+      REPLICATION: "${KAFKA_TOPIC_REPLICATION:-1}"
+    entrypoint: ["/bin/bash", "-eu", "-o", "pipefail", "-c"]
+    command:
+      - |
+        TOPICS="
+          horizon.ingestion.commands.v1
+          horizon.ingestion.events.v1
+          horizon.documents.v1
+          horizon.analysis.commands.v1
+          horizon.analysis.events.v1
+          horizon.trends.events.v1
+        "
+        # Партиций 3: ключ партиционирования — researchRequestId, поэтому порядок
+        # внутри одной саги сохраняется при любом числе партиций (§5 обзора архитектуры).
+        # Репликация локально всегда 1 — брокер один; в prod значение приходит из values-prod.yaml.
+        for t in $${TOPICS}; do
+          for name in "$${t}" "$${t}.dlq"; do
+            echo "[redpanda-init] create $${name}"
+            rpk topic create "$${name}" \
+                --brokers "$${BROKERS}" \
+                --partitions "$${PARTITIONS}" \
+                --replicas "$${REPLICATION}" \
+              || echo "[redpanda-init] $${name} already exists — ok"
+          done
+        done
+
+        # Проверка результата: `rpk topic create` возвращает ненулевой код и на
+        # «уже существует», и на настоящую ошибку. Без явной сверки init «успешно»
+        # завершался бы даже при недоступном брокере.
+        echo "[redpanda-init] verifying"
+        EXISTING="$(rpk topic list --brokers "$${BROKERS}" | awk 'NR>1 {print $$1}')"
+        MISSING=0
+        for t in $${TOPICS}; do
+          for name in "$${t}" "$${t}.dlq"; do
+            if ! echo "$${EXISTING}" | grep -qx "$${name}"; then
+              echo "[redpanda-init] MISSING topic: $${name}" >&2
+              MISSING=1
+            fi
+          done
+        done
+        [ "$${MISSING}" -eq 0 ] || { echo "[redpanda-init] FAILED" >&2; exit 1; }
+        echo "[redpanda-init] all 12 topics present"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Redis ───────────────────────────
+  # ADR-0011: кэш отчётов, счётчики лимитов, локи коннекторов, шина SSE.
+  redis:
+    image: redis:7-alpine
+    container_name: horizon-redis
+    restart: unless-stopped
+    stop_grace_period: 15s
+    environment:
+      REDIS_PASSWORD: "${REDIS_PASSWORD:-}"
+    command:
+      - sh
+      - -c
+      # volatile-lru, а не allkeys-lru: под давлением памяти вытесняем только
+      # ключи с TTL. Локи коннекторов и денилист JWT потерять нельзя.
+      # $$ экранирует подстановку compose — переменную разворачивает shell контейнера.
+      - >-
+        exec redis-server
+        --appendonly yes
+        --appendfsync everysec
+        --maxmemory ${REDIS_MAXMEMORY:-192mb}
+        --maxmemory-policy volatile-lru
+        --save 60 1000
+        $${REDIS_PASSWORD:+--requirepass "$$REDIS_PASSWORD"}
+    ports:
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -h 127.0.0.1 --no-auth-warning $${REDIS_PASSWORD:+-a $$REDIS_PASSWORD} ping | grep -q PONG"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+    deploy:
+      resources:
+        limits:
+          memory: "${REDIS_MEM_LIMIT:-256m}"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── ClickHouse ───────────────────────────
+  # ADR-0007: факты упоминаний терминов, колоночные агрегации (NFR-P6).
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: horizon-clickhouse
+    restart: unless-stopped
+    stop_grace_period: 30s
+    environment:
+      CLICKHOUSE_DB: "${CLICKHOUSE_DB:-horizon}"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:-horizon}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-clickhouse_dev_pwd}"
+      # Пользователь `default` без пароля отключается — иначе к БД можно
+      # подключиться анонимно с host-машины.
+      CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT: "0"
+      TZ: "${TZ:-UTC}"
+    ulimits:
+      # ClickHouse открывает много файлов на партицию; дефолт docker (1024) мал.
+      nofile:
+        soft: 262144
+        hard: 262144
+    ports:
+      - "127.0.0.1:${CLICKHOUSE_HTTP_PORT:-8123}:8123"
+      - "127.0.0.1:${CLICKHOUSE_NATIVE_PORT:-9000}:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+      - clickhouse-logs:/var/log/clickhouse-server
+      # Урезание аппетита к памяти: без этого ClickHouse ориентируется на ОЗУ
+      # хоста, игнорируя лимит контейнера, и его убивает OOM killer.
+      - ./clickhouse/config.d:/etc/clickhouse-server/config.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "wget --no-verbose --tries=1 --spider http://127.0.0.1:8123/ping || exit 1"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: "${CLICKHOUSE_MEM_LIMIT:-1g}"
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Схема ClickHouse (one-shot) ───────────────────────────
+  clickhouse-init:
+    image: clickhouse/clickhouse-server:24.8-alpine
+    container_name: horizon-clickhouse-init
+    restart: "no"
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    environment:
+      CH_HOST: "${CLICKHOUSE_HOST:-clickhouse}"
+      CH_DB: "${CLICKHOUSE_DB:-horizon}"
+      CH_USER: "${CLICKHOUSE_USER:-horizon}"
+      CH_PASSWORD: "${CLICKHOUSE_PASSWORD:-clickhouse_dev_pwd}"
+      CH_PORT: "9000"
+      CH_DIR: "/sql/migrations"
+    volumes:
+      - ./clickhouse:/sql:ro
+    # Штатный entrypoint образа поднимает сервер; здесь нужен только клиент.
+    entrypoint: ["/bin/sh", "-eu", "-c"]
+    command:
+      # Версионируемое применение схемы вместо прогона всех файлов подряд. Прежний вариант
+      # выполнял каждый файл под `IF NOT EXISTS`, поэтому на существующем кластере правка списка
+      # колонок не применялась никогда и молча. См. deploy/compose/clickhouse/apply-migrations.sh.
+      - /sql/apply-migrations.sh
+    logging: *default-logging
+    networks: [horizon]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  НАБЛЮДАЕМОСТЬ (NFR-O1..O5)
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────── OpenTelemetry Collector ───────────────────────────
+  # ВНИМАНИЕ: образ distroless — в нём нет ни shell, ни wget, поэтому HEALTHCHECK
+  # технически невозможен. Приложения зависят от него как service_started:
+  # отказ экспорта телеметрии не должен ронять бизнес-функцию.
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.109.0
+    container_name: horizon-otel-collector
+    restart: unless-stopped
+    command: ["--config=/etc/otel/otel-collector.yaml"]
+    volumes:
+      - ./observability/otel-collector.yaml:/etc/otel/otel-collector.yaml:ro
+    ports:
+      - "127.0.0.1:${OTEL_GRPC_PORT:-4317}:4317"   # OTLP gRPC
+      - "127.0.0.1:${OTEL_HTTP_PORT:-4318}:4318"   # OTLP HTTP
+      - "127.0.0.1:8889:8889"                      # экспорт метрик коллектора
+      - "127.0.0.1:13133:13133"                    # health_check extension
+    deploy:
+      resources:
+        limits:
+          memory: 256m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Prometheus ───────────────────────────
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    container_name: horizon-prometheus
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=${PROMETHEUS_RETENTION:-72h}
+      - --web.console.libraries=/usr/share/prometheus/console_libraries
+      - --web.console.templates=/usr/share/prometheus/consoles
+      # Позволяет `make reload-prometheus` без перезапуска контейнера.
+      - --web.enable-lifecycle
+      # Приёмник remote-write нужен Tempo: его metrics_generator пишет сюда
+      # RED-метрики и граф сервисов, построенные из трейсов (см. tempo.yaml).
+      - --web.enable-remote-write-receiver
+    volumes:
+      - ./observability/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ./observability/alerts.yml:/etc/prometheus/alerts.yml:ro
+      - prometheus-data:/prometheus
+    ports:
+      - "127.0.0.1:${PROMETHEUS_PORT:-9090}:9090"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:9090/-/healthy || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Tempo (трейсы) ───────────────────────────
+  # Healthcheck не задан: состав образа (distroless или alpine) меняется между
+  # релизами Tempo, а ложно-«нездоровый» контейнер трассировки хуже отсутствия пробы.
+  # Готовность фактически проверяется коллектором: экспорт с ретраями.
+  tempo:
+    image: grafana/tempo:2.6.0
+    container_name: horizon-tempo
+    restart: unless-stopped
+    command: ["-config.file=/etc/tempo/tempo.yaml"]
+    volumes:
+      - ./observability/tempo.yaml:/etc/tempo/tempo.yaml:ro
+      - tempo-data:/var/tempo
+    ports:
+      - "127.0.0.1:${TEMPO_PORT:-3200}:3200"       # HTTP API / Grafana datasource
+    deploy:
+      resources:
+        limits:
+          memory: 512m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── Grafana ───────────────────────────
+  grafana:
+    image: grafana/grafana:11.2.0
+    container_name: horizon-grafana
+    restart: unless-stopped
+    depends_on:
+      prometheus:
+        condition: service_healthy
+    environment:
+      GF_SECURITY_ADMIN_USER: "${GRAFANA_ADMIN_USER:-admin}"
+      GF_SECURITY_ADMIN_PASSWORD: "${GRAFANA_ADMIN_PASSWORD:-admin}"
+      GF_USERS_ALLOW_SIGN_UP: "false"
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_ANALYTICS_REPORTING_ENABLED: "false"
+      GF_ANALYTICS_CHECK_FOR_UPDATES: "false"
+      GF_NEWS_NEWS_FEED_ENABLED: "false"
+      GF_PATHS_PROVISIONING: /etc/grafana/provisioning
+      # Дашборды — код в репозитории (NFR-O2), а не ручные правки в UI.
+      GF_DASHBOARDS_MIN_REFRESH_INTERVAL: "5s"
+      GF_FEATURE_TOGGLES_ENABLE: "traceqlEditor"
+      GF_LOG_LEVEL: warn
+    volumes:
+      - ./observability/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./observability/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana-data:/var/lib/grafana
+    ports:
+      - "127.0.0.1:${GRAFANA_PORT:-3001}:3000"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:3000/api/health || exit 1"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+    deploy:
+      resources:
+        limits:
+          memory: 384m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ═══════════════════════════════════════════════════════════════════════════
+  #  СЕРВИСЫ HORIZON
+  # ═══════════════════════════════════════════════════════════════════════════
+
+  # ─────────────────────────── trends-service (8082) ───────────────────────────
+  # Ядро домена: сага, сборка отчётов, обратная связь (ADR-0004).
+  trends-service:
+    build:
+      context: ../../services
+      dockerfile: trends-service/Dockerfile
+      args:
+        VERSION: "${HORIZON_VERSION:-dev}"
+        REVISION: "${HORIZON_REVISION:-unknown}"
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/trends-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-trends-service
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      <<: [*jvm-env, *otel-env, *kafka-env, *redis-env, *db-pool-env]
+      SERVER_PORT: "8082"
+      OTEL_SERVICE_NAME: "trends-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=trends-service,service.namespace=horizon,service.version=${HORIZON_VERSION:-dev},deployment.environment=${HORIZON_ENV:-local}"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-horizon}?currentSchema=trends&ApplicationName=trends-service"
+      SPRING_DATASOURCE_USERNAME: "${TRENDS_DB_USER:-trends_app}"
+      SPRING_DATASOURCE_PASSWORD: "${TRENDS_DB_PASSWORD:-trends_dev_pwd}"
+      SPRING_FLYWAY_SCHEMAS: "trends"
+      SPRING_FLYWAY_DEFAULT_SCHEMA: "trends"
+      # Дедлайн саги по режиму анализа: быстрый укладывается в двадцать минут, качественный — в
+      # сорок (глубокое исследование в нём читает двадцать минут).
+      HORIZON_SAGA_TIMEOUT: "${HORIZON_SAGA_TIMEOUT:-PT60M}"
+      HORIZON_SAGA_TIMEOUT_QUALITY: "${HORIZON_SAGA_TIMEOUT_QUALITY:-PT90M}"
+      # Хост — имя службы в compose (`analytics-api`), а не имя образа. С прежним значением
+      # `analytics-service` DNS не резолвился вовсе, и всё, что trends спрашивает у движка,
+      # молча не работало: подсказка известных направлений и перевод направления в коды корпуса.
+      HORIZON_ANALYTICS_BASE_URL: "${HORIZON_ANALYTICS_BASE_URL:-http://analytics-api:8000}"
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      # Трассировка термина повторяет анализ целиком (минуты) и ждёт очереди к движку; её ждёт
+      # фоновый поток, а не браузер, поэтому таймаут у неё свой и длинный. Прочие вызовы — PT20S.
+      HORIZON_ANALYTICS_EXPLAIN_TIMEOUT: "${HORIZON_ANALYTICS_EXPLAIN_TIMEOUT:-PT20M}"
+      HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL: "${HORIZON_SAGA_TIMEOUT_SCAN_INTERVAL:-PT30S}"
+      HORIZON_REPORT_CACHE_TTL: "${HORIZON_REPORT_CACHE_TTL:-PT24H}"
+    ports:
+      - "127.0.0.1:${TRENDS_PORT:-8082}:8082"
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    deploy:
+      resources:
+        limits:
+          memory: "${TRENDS_MEM_LIMIT:-1g}"
+        reservations:
+          memory: 512m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── ingestion-service (8083) ───────────────────────────
+  ingestion-service:
+    build:
+      context: ../../services
+      dockerfile: ingestion-service/Dockerfile
+      args:
+        VERSION: "${HORIZON_VERSION:-dev}"
+        REVISION: "${HORIZON_REVISION:-unknown}"
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/ingestion-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-ingestion-service
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      <<: [*jvm-env, *otel-env, *kafka-env, *redis-env, *db-pool-env]
+      SERVER_PORT: "8083"
+      OTEL_SERVICE_NAME: "ingestion-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=ingestion-service,service.namespace=horizon,service.version=${HORIZON_VERSION:-dev},deployment.environment=${HORIZON_ENV:-local}"
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres:5432/${POSTGRES_DB:-horizon}?currentSchema=ingestion&ApplicationName=ingestion-service"
+      SPRING_DATASOURCE_USERNAME: "${INGESTION_DB_USER:-ingestion_app}"
+      SPRING_DATASOURCE_PASSWORD: "${INGESTION_DB_PASSWORD:-ingestion_dev_pwd}"
+      SPRING_FLYWAY_SCHEMAS: "ingestion"
+      SPRING_FLYWAY_DEFAULT_SCHEMA: "ingestion"
+      # Соблюдение ToS источников (NFR-S12).
+      HORIZON_INGESTION_USER_AGENT: "${HORIZON_INGESTION_USER_AGENT:-HorizonBot/1.0}"
+      # Пять тысяч за прогон против полутора тысяч в анализе (`max_documents`) — не рассогласование:
+      # сбор накапливает корпус между запросами, а анализ берёт полторы тысячи самых релевантных
+      # документов окна и помечает отчёт `truncated`. Собранное сверх лимита не пропадает, оно
+      # остаётся в хранилище и участвует в следующих прогонах.
+      HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN: "${HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN:-5000}"
+      # Общий секрет внутренней поверхности `/internal/**`, откуда движок забирает собранный
+      # корпус. Тот же, которым закрыт `/internal/analyze` у самого движка: граница одна.
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      # Шестьдесят секунд, а не двадцать. Научные API отвечают на страницу выдачи десятки
+      # секунд, когда им тяжело: замер 2026-09-18 по arXiv с настоящим запросом направления —
+      # 6 s на сотню записей и 32 s на двести. При двадцати секундах это не медленная
+      # страница, а потерянный источник: четыре попытки по таймауту и отчёт без arXiv.
+      HORIZON_INGESTION_HTTP_TIMEOUT: "${HORIZON_INGESTION_HTTP_TIMEOUT:-PT60S}"
+      # Ключ OpenAlex. Без него бюджет — $0,10 в сутки на адрес (сто поисковых запросов), и на
+      # стенде он кончался к середине дня: сбор получал 429 и отчёт терял лучший по аффилиациям
+      # источник. Бесплатный ключ — $1 в сутки. Пустое значение — работа без ключа.
+      HORIZON_OPENALEX_API_KEY: "${HORIZON_OPENALEX_API_KEY:-}"
+      HORIZON_OPENALEX_API_KEYS: "${HORIZON_OPENALEX_API_KEYS:-}"
+      HORIZON_CONTACT_EMAIL: "${HORIZON_CONTACT_EMAIL:-}"
+      # артефакту не ломает умолчание — движок signals просто нельзя выбрать.
+      # Узкие запросы от генеративной модели перед сбором (analysis 91). Тот же сервис моделей, что
+      # у движка; пустой адрес или выключатель — сбор, как был, одним запросом направления.
+      HORIZON_QUERY_EXPANSION_ENABLED: "${HORIZON_QUERY_EXPANSION_ENABLED:-false}"
+      HORIZON_NLP_URL: "${HORIZON_NLP_URL:-}"
+      # Глубина узких запросов: документов на пару «формулировка × источник» и резерв сверх бюджета
+      # запроса направления (ноль — доля 0,4 из общего бюджета). Разбор 92.
+      HORIZON_QUERY_EXPANSION_PER_QUERY_DOCUMENTS: "${HORIZON_QUERY_EXPANSION_PER_QUERY_DOCUMENTS:-40}"
+      HORIZON_QUERY_EXPANSION_RESERVE_DOCUMENTS: "${HORIZON_QUERY_EXPANSION_RESERVE_DOCUMENTS:-0}"
+      HORIZON_QUERY_EXPANSION_TIME_BUDGET: "${HORIZON_QUERY_EXPANSION_TIME_BUDGET:-PT6M}"
+      # Узкие запросы на русском и китайском (en всегда) и перевод таких документов на английский
+      # после сбора — один раз, с хранением (разбор 93).
+      HORIZON_QUERY_EXPANSION_LANGUAGES: "${HORIZON_QUERY_EXPANSION_LANGUAGES:-en}"
+      HORIZON_TRANSLATION_ENABLED: "${HORIZON_TRANSLATION_ENABLED:-false}"
+      HORIZON_TRANSLATION_CONCURRENCY: "${HORIZON_TRANSLATION_CONCURRENCY:-6}"
+      HORIZON_TRANSLATION_TIME_BUDGET: "${HORIZON_TRANSLATION_TIME_BUDGET:-PT4M}"
+      HORIZON_INGESTION_CB_FAILURE_RATE_THRESHOLD: "${HORIZON_INGESTION_CB_FAILURE_RATE_THRESHOLD:-50}"
+      HORIZON_INGESTION_CB_WAIT_DURATION: "${HORIZON_INGESTION_CB_WAIT_DURATION:-PT30S}"
+      # Локально внешние источники выключены: они не должны дёргаться от одного лишь
+      # `make up` (NFR-S12, ToS).
+      HORIZON_SOURCE_ARXIV_ENABLED: "${HORIZON_SOURCE_ARXIV_ENABLED:-false}"
+      HORIZON_SOURCE_ALPHAXIV_ENABLED: "${HORIZON_SOURCE_ALPHAXIV_ENABLED:-false}"
+      HORIZON_ALPHAXIV_API_KEY: "${HORIZON_ALPHAXIV_API_KEY:-}"
+      HORIZON_SOURCE_OPENALEX_ENABLED: "${HORIZON_SOURCE_OPENALEX_ENABLED:-false}"
+      HORIZON_SOURCE_CROSSREF_ENABLED: "${HORIZON_SOURCE_CROSSREF_ENABLED:-false}"
+      HORIZON_SOURCE_GITHUB_ENABLED: "${HORIZON_SOURCE_GITHUB_ENABLED:-false}"
+      # Источники из исследований к кейсу (разбор 89). Выключены по умолчанию, как и прочие
+      # сетевые: `make up` не должен ходить во внешние сервисы. GDELT на стенде выключен и там:
+      # с его адреса он отказывает почти всегда, и каждый отчёт помечался бы неполным.
+      HORIZON_SOURCE_SEMANTICSCHOLAR_ENABLED: "${HORIZON_SOURCE_SEMANTICSCHOLAR_ENABLED:-false}"
+      HORIZON_SEMANTIC_SCHOLAR_API_KEY: "${HORIZON_SEMANTIC_SCHOLAR_API_KEY:-}"
+      # The Lens — научные работы и патенты. Без ключа источник объявляет себя недоступным.
+      HORIZON_SOURCE_LENS_ENABLED: "${HORIZON_SOURCE_LENS_ENABLED:-true}"
+      HORIZON_LENS_API_TOKEN: "${HORIZON_LENS_API_TOKEN:-}"
+      HORIZON_LENS_PATENT_API_TOKEN: "${HORIZON_LENS_PATENT_API_TOKEN:-}"
+      HORIZON_LENS_REQUESTS_PER_MINUTE: "${HORIZON_LENS_REQUESTS_PER_MINUTE:-10}"
+      HORIZON_SOURCE_EUROPEPMC_ENABLED: "${HORIZON_SOURCE_EUROPEPMC_ENABLED:-false}"
+      HORIZON_SOURCE_HACKERNEWS_ENABLED: "${HORIZON_SOURCE_HACKERNEWS_ENABLED:-false}"
+      HORIZON_SOURCE_GDELT_ENABLED: "${HORIZON_SOURCE_GDELT_ENABLED:-false}"
+      # Продуктовые и отраслевые источники (разбор 101). Выключены по умолчанию, как все сетевые.
+      HORIZON_SOURCE_HABR_ENABLED: "${HORIZON_SOURCE_HABR_ENABLED:-false}"
+      HORIZON_SOURCE_INDUSTRY_ENABLED: "${HORIZON_SOURCE_INDUSTRY_ENABLED:-false}"
+      HORIZON_SOURCE_USPTO_ENABLED: "${HORIZON_SOURCE_USPTO_ENABLED:-false}"
+      HORIZON_SOURCE_GLOBENEWSWIRE_ENABLED: "${HORIZON_SOURCE_GLOBENEWSWIRE_ENABLED:-false}"
+      HORIZON_SOURCE_PRNEWSWIRE_ENABLED: "${HORIZON_SOURCE_PRNEWSWIRE_ENABLED:-false}"
+      HORIZON_SOURCE_PRODUCTHUNT_ENABLED: "${HORIZON_SOURCE_PRODUCTHUNT_ENABLED:-false}"
+      HORIZON_SOURCE_EDGAR_ENABLED: "${HORIZON_SOURCE_EDGAR_ENABLED:-false}"
+      HORIZON_SOURCE_IETF_ENABLED: "${HORIZON_SOURCE_IETF_ENABLED:-false}"
+      HORIZON_SOURCE_SBIR_ENABLED: "${HORIZON_SOURCE_SBIR_ENABLED:-false}"
+      HORIZON_SOURCE_NSF_ENABLED: "${HORIZON_SOURCE_NSF_ENABLED:-false}"
+      HORIZON_SOURCE_REGULATORS_ENABLED: "${HORIZON_SOURCE_REGULATORS_ENABLED:-false}"
+      # Глубокое исследование (разбор 102): агент сервиса моделей на облачной модели ищет по
+      # открытым каталогам и читает страницы целиком. Требует HORIZON_NLP_URL и облачного бэкенда
+      # сервиса моделей. Бюджет — по режиму анализа из команды сбора: без префикса QUALITY —
+      # быстрый (анализ за 20 минут), с ним — качественный (за 40). Остальные источники и узкие
+      # запросы идут параллельно, поэтому сбор длится примерно столько, сколько исследование.
+      HORIZON_SOURCE_DEEPRESEARCH_ENABLED: "${HORIZON_SOURCE_DEEPRESEARCH_ENABLED:-false}"
+      HORIZON_SOURCE_WEBCORPUS_ENABLED: "${HORIZON_SOURCE_WEBCORPUS_ENABLED:-false}"
+      # Отбор собранного корпуса по фразам запроса (разбор 110): документ без единой формулировки
+      # запроса фразой в корпус анализа не идёт; без расширения запроса отбора нет.
+      HORIZON_CORPUS_RELEVANCE_ENABLED: "${HORIZON_CORPUS_RELEVANCE_ENABLED:-true}"
+      HORIZON_DEEPRESEARCH_TIME_BUDGET: "${HORIZON_DEEPRESEARCH_TIME_BUDGET:-PT6M}"
+      HORIZON_DEEPRESEARCH_MAX_ITERATIONS: "${HORIZON_DEEPRESEARCH_MAX_ITERATIONS:-40}"
+      HORIZON_DEEPRESEARCH_MAX_FETCHES: "${HORIZON_DEEPRESEARCH_MAX_FETCHES:-30}"
+      HORIZON_DEEPRESEARCH_MIN_SOURCES: "${HORIZON_DEEPRESEARCH_MIN_SOURCES:-25}"
+      HORIZON_DEEPRESEARCH_QUALITY_TIME_BUDGET: "${HORIZON_DEEPRESEARCH_QUALITY_TIME_BUDGET:-PT20M30S}"
+      HORIZON_DEEPRESEARCH_QUALITY_MAX_ITERATIONS: "${HORIZON_DEEPRESEARCH_QUALITY_MAX_ITERATIONS:-120}"
+      HORIZON_DEEPRESEARCH_QUALITY_MAX_FETCHES: "${HORIZON_DEEPRESEARCH_QUALITY_MAX_FETCHES:-90}"
+      HORIZON_DEEPRESEARCH_QUALITY_MIN_SOURCES: "${HORIZON_DEEPRESEARCH_QUALITY_MIN_SOURCES:-40}"
+      # Переменная была задокументирована и выставлена на стенде, но до контейнера не доезжала:
+      # в этом списке её просто не было. Служба брала своё умолчание, и настройка не действовала.
+      HORIZON_SOURCE_RSS_ENABLED: "${HORIZON_SOURCE_RSS_ENABLED:-false}"
+      HORIZON_SOURCE_RSS_FEEDS: "${HORIZON_SOURCE_RSS_FEEDS:-}"
+      HORIZON_CONNECTOR_CONTACT_EMAIL: "${HORIZON_CONNECTOR_CONTACT_EMAIL:-ops@horizon.example}"
+      HORIZON_GITHUB_TOKEN: "${HORIZON_GITHUB_TOKEN:-}"
+      HORIZON_RAW_STORE_PATH: "${HORIZON_RAW_STORE_PATH:-/var/lib/horizon/raw}"
+    ports:
+      - "127.0.0.1:${INGESTION_PORT:-8083}:8083"
+    volumes:
+      # Сырые ответы источников (NFR-D3). Именованный том, а не bind: данные
+      # переживают пересоздание контейнера и не засоряют рабочую копию.
+      - ingestion-raw:/var/lib/horizon/raw
+      # Golden-корпус (ADR-0015) — тестовые ДАННЫЕ, не исходный код.
+      # Read-only и единственное исключение из правила «никаких bind-монтирований»:
+      # без него fixture-коннектор нечего было бы читать, а зашить корпус в образ
+      # нельзя — контекст сборки Java-образов ограничен каталогом services/.
+      - ../../fixtures:/opt/horizon/fixtures:ro
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    deploy:
+      resources:
+        limits:
+          memory: "${INGESTION_MEM_LIMIT:-1g}"
+        reservations:
+          memory: 512m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── analytics-service :: роль api (8000) ───────────────────────────
+  # Один образ, две роли (ADR-0014). Здесь — синхронный HTTP API.
+  analytics-api:
+    build:
+      context: ../../services/analytics-service
+      dockerfile: Dockerfile
+      args:
+        VERSION: "${HORIZON_VERSION:-dev}"
+        REVISION: "${HORIZON_REVISION:-unknown}"
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/analytics-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-analytics-api
+    restart: unless-stopped
+    stop_grace_period: 30s
+    command: ["api"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+      postgres-init:
+        condition: service_completed_successfully
+      clickhouse-init:
+        condition: service_completed_successfully
+      redpanda-init:
+        condition: service_completed_successfully
+      otel-collector:
+        condition: service_started
+    environment:
+      TZ: "${TZ:-UTC}"
+      <<: *otel-env
+      HORIZON_ANALYTICS_ROLE: "api"
+      # Включает /internal/*: без секрета движок отвечает 404, и трассировка термина
+      # в интерфейсе молча перестала бы работать.
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      HORIZON_ANALYTICS_PORT: "8000"
+      OTEL_SERVICE_NAME: "analytics-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=analytics-service,service.role=api,service.namespace=horizon,service.version=${HORIZON_VERSION:-dev},deployment.environment=${HORIZON_ENV:-local}"
+      HORIZON_ENV: "${HORIZON_ENV:-local}"
+      HORIZON_VERSION: "${HORIZON_VERSION:-dev}"
+      HORIZON_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+      HORIZON_LOG_FORMAT: "${HORIZON_LOG_FORMAT:-json}"
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+      # Откуда движок берёт собранный корпус. Без этого адреса он молча переходил на эталонный
+      # корпус: тот отвечает на любой идентификатор снапшота, и отчёт собирался по фикстуре.
+      HORIZON_INGESTION_URL: "${HORIZON_INGESTION_URL:-http://ingestion-service:8083}"
+      # Доступ к журналу заданий движка. Без этих переменных движок молча переходил на эталонный
+      # корпус: `build_container` берёт фикстуру, когда репозиторий не передан, а `run_worker`
+      # передаёт его только при заданном пароле. На стенде с живыми источниками это означало, что
+      # анализ шёл **не по тому, что собрано** — сбор отрабатывал, писал документы в базу, и они
+      # не читались ни разу.
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB:-horizon}"
+      ANALYTICS_DB_USER: "${ANALYTICS_DB_USER:-analytics_app}"
+      ANALYTICS_DB_PASSWORD: "${ANALYTICS_DB_PASSWORD:-analytics_dev_pwd}"
+      ANALYTICS_DB_SCHEMA: "${ANALYTICS_DB_SCHEMA:-analytics}"
+      HORIZON_MENTION_STORE: "${HORIZON_MENTION_STORE:-clickhouse}"
+      CLICKHOUSE_URL: "http://${CLICKHOUSE_HOST:-clickhouse}:8123"
+      CLICKHOUSE_DATABASE: "${CLICKHOUSE_DB:-horizon}"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:-horizon}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-clickhouse_dev_pwd}"
+      HORIZON_EMBEDDING_PROVIDER: "${HORIZON_EMBEDDING_PROVIDER:-tfidf-svd}"
+      HORIZON_EMBEDDING_DIM: "${HORIZON_EMBEDDING_DIM:-384}"
+      HORIZON_NARRATIVE_MODE: "${HORIZON_NARRATIVE_MODE:-extractive}"
+      HORIZON_METHODOLOGY_VERSION: "${HORIZON_METHODOLOGY_VERSION:-1.0.0}"
+      HORIZON_FIXED_CLOCK: "${HORIZON_FIXED_CLOCK:-}"
+      HORIZON_LLM_ENABLED: "${HORIZON_LLM_ENABLED:-false}"
+      # Сервис вывода моделей (ADR-0017). Пустой адрес выключает и семантический фильтр
+      # кандидатов, и русский слой выдачи: движок ведёт себя ровно так, как вёл до их появления,
+      # и остаётся побайтово воспроизводимым. Это законный режим, а не деградация.
+      HORIZON_NLP_URL: "${HORIZON_NLP_URL:-}"
+      HORIZON_NLP_JUDGE_MODEL: "${HORIZON_NLP_JUDGE_MODEL:-gpt-5.6-luna}"
+      HORIZON_NLP_JUDGE_ENABLED: "${HORIZON_NLP_JUDGE_ENABLED:-true}"
+      HORIZON_NLP_LOCALIZATION_ENABLED: "${HORIZON_NLP_LOCALIZATION_ENABLED:-true}"
+      HORIZON_NLP_TIMEOUT_SECONDS: "${HORIZON_NLP_TIMEOUT_SECONDS:-240}"
+      # Внешняя проверка зрелости по OpenAlex и Википедии: правило мейнстрима Этапа 1 на темах
+      # открытого запроса. Выключена по умолчанию — анализ не должен зависеть от чужих серверов,
+      # пока его об этом не попросили явно.
+      HORIZON_EXTERNAL_MATURITY_ENABLED: "${HORIZON_EXTERNAL_MATURITY_ENABLED:-false}"
+      HORIZON_EXTERNAL_MATURITY_BUDGET_SECONDS: "${HORIZON_EXTERNAL_MATURITY_BUDGET_SECONDS:-120}"
+      HORIZON_CONNECTOR_CONTACT_EMAIL: "${HORIZON_CONNECTOR_CONTACT_EMAIL:-ops@horizon.example}"
+      HORIZON_OPENALEX_API_KEY: "${HORIZON_OPENALEX_API_KEY:-}"
+      HORIZON_OPENALEX_API_KEYS: "${HORIZON_OPENALEX_API_KEYS:-}"
+      HORIZON_CONTACT_EMAIL: "${HORIZON_CONTACT_EMAIL:-}"
+      # Пусто — модель, поставляемая с образом (resources/signals-model.json).
+      HORIZON_SIGNALS_MODEL: "${HORIZON_SIGNALS_MODEL:-}"
+      HORIZON_SIGNALS_CACHE_DIR: "${HORIZON_SIGNALS_CACHE_DIR:-/opt/horizon/signals/cache}"
+      HORIZON_SIGNALS_TOP_CANDIDATES: "${HORIZON_SIGNALS_TOP_CANDIDATES:-150}"
+      HORIZON_SIGNALS_CACHE_ONLY: "${HORIZON_SIGNALS_CACHE_ONLY:-false}"
+      # Потолки времени опроса внешних источников: этап анализа обязан кончиться, даже когда
+      # чужой сервер молчит. Не дошло до кандидата — он считается по корпусной части с пометкой.
+      HORIZON_SIGNALS_BUDGET_SECONDS: "${HORIZON_SIGNALS_BUDGET_SECONDS:-300}"
+      HORIZON_SIGNALS_TERM_BUDGET_SECONDS: "${HORIZON_SIGNALS_TERM_BUDGET_SECONDS:-30}"
+      # Второй источник кандидатов движка signals: имена технологий от генеративной модели,
+      # публикуемые только после подтверждения внешними источниками (ТЗ §3.1). Требует
+      # HORIZON_NLP_URL; выключено по умолчанию — умолчание стенда не меняется само.
+      HORIZON_SIGNALS_PROPOSE_CANDIDATES: "${HORIZON_SIGNALS_PROPOSE_CANDIDATES:-false}"
+      HORIZON_SIGNALS_PROPOSED_LIMIT: "${HORIZON_SIGNALS_PROPOSED_LIMIT:-80}"
+    ports:
+      - "127.0.0.1:${ANALYTICS_PORT:-8000}:8000"
+    volumes:
+      # Эталонный корпус: `FixtureDocumentRepository` разрешает любой идентификатор снапшота в
+      # него целиком — так задуман сквозной прогон против настоящего стека без единого мока
+      # (ADR-0015). Смонтирован он был только у ingestion, поэтому аналитика молча падала на
+      # `corpus.fixture_missing` и отвечала SNAPSHOT_NOT_FOUND на каждый анализ.
+      - ../../fixtures:/opt/horizon/fixtures:ro
+      # Артефакт модели и кэш признаков живут на машине, а не в образе: модель переобучается
+      # отдельно от выпуска кода, а кэш обязан пережить перезапуск, иначе каждый анализ снова
+      # опрашивает внешние источники.
+      - ${HORIZON_SIGNALS_PATH:-/opt/horizon-signals}:/opt/horizon/signals
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=128m
+    deploy:
+      resources:
+        limits:
+          memory: "${ANALYTICS_API_MEM_LIMIT:-1g}"
+        reservations:
+          memory: 512m
+    logging: *default-logging
+    networks:
+      horizon:
+        # Псевдоним ради развёртываний, где в .env осталось прежнее имя хоста `analytics-service`:
+        # без него правка умолчания чинила бы только новые установки, а старые продолжали бы молча
+        # не работать — ровно так, как этот стенд и работал.
+        aliases: [analytics-service]
+
+  # ─────────────────────────── analytics-service :: роль worker ───────────────────────────
+  # Тот же образ, другой профиль масштабирования: по лагу консьюмера (ADR-0014).
+  analytics-worker:
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/analytics-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-analytics-worker
+    restart: unless-stopped
+    stop_grace_period: 30s
+    command: ["worker"]
+    depends_on:
+      analytics-api:
+        # Образ один: ждём, пока api успешно поднимется, — это дешёвая проверка
+        # того, что миграции и конфигурация корректны, до запуска долгих задач.
+        condition: service_healthy
+      redpanda:
+        condition: service_healthy
+      redpanda-init:
+        condition: service_completed_successfully
+    environment:
+      TZ: "${TZ:-UTC}"
+      <<: *otel-env
+      HORIZON_ANALYTICS_ROLE: "worker"
+      # Нужен и воркеру: он забирает корпус у сбора по внутреннему API за тем же секретом.
+      HORIZON_ANALYTICS_INTERNAL_SECRET: "${HORIZON_ANALYTICS_INTERNAL_SECRET:-horizon-internal-dev-secret}"
+      HORIZON_METRICS_PORT: "${HORIZON_METRICS_PORT:-9100}"
+      HORIZON_ANALYTICS_WORKER_CONCURRENCY: "${HORIZON_ANALYTICS_WORKER_CONCURRENCY:-2}"
+      # Сколько анализ вправе держать команду без опроса очереди. Умолчание aiokafka — пять минут,
+      # а анализ идёт пять–десять: брокер исключал бы потребителя посреди анализа. 45 минут — выше
+      # саги качественного режима (40).
+      HORIZON_ANALYTICS_MAX_POLL_INTERVAL_MS: "${HORIZON_ANALYTICS_MAX_POLL_INTERVAL_MS:-2700000}"
+      HORIZON_WORKER_LIVENESS_FILE: "/tmp/worker-alive"
+      # У роли worker нет HTTP-API, поэтому метрики отдаёт отдельный слушатель
+      # prometheus_client. Без него самый долгий этап конвейера был бы невидим
+      # для Prometheus (job horizon-analytics-worker в prometheus.yml).
+      OTEL_SERVICE_NAME: "analytics-service"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=analytics-service,service.role=worker,service.namespace=horizon,service.version=${HORIZON_VERSION:-dev},deployment.environment=${HORIZON_ENV:-local}"
+      HORIZON_ENV: "${HORIZON_ENV:-local}"
+      HORIZON_VERSION: "${HORIZON_VERSION:-dev}"
+      HORIZON_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+      HORIZON_LOG_FORMAT: "${HORIZON_LOG_FORMAT:-json}"
+      KAFKA_BOOTSTRAP_SERVERS: "${KAFKA_BOOTSTRAP_SERVERS:-redpanda:9092}"
+      KAFKA_CONSUMER_GROUP_PREFIX: "${KAFKA_CONSUMER_GROUP_PREFIX:-horizon}"
+      # Откуда движок берёт собранный корпус. Без этого адреса он молча переходил на эталонный
+      # корпус: тот отвечает на любой идентификатор снапшота, и отчёт собирался по фикстуре.
+      HORIZON_INGESTION_URL: "${HORIZON_INGESTION_URL:-http://ingestion-service:8083}"
+      # Доступ к журналу заданий движка. Без этих переменных движок молча переходил на эталонный
+      # корпус: `build_container` берёт фикстуру, когда репозиторий не передан, а `run_worker`
+      # передаёт его только при заданном пароле. На стенде с живыми источниками это означало, что
+      # анализ шёл **не по тому, что собрано** — сбор отрабатывал, писал документы в базу, и они
+      # не читались ни разу.
+      POSTGRES_HOST: "${POSTGRES_HOST:-postgres}"
+      POSTGRES_PORT: "5432"
+      POSTGRES_DB: "${POSTGRES_DB:-horizon}"
+      ANALYTICS_DB_USER: "${ANALYTICS_DB_USER:-analytics_app}"
+      ANALYTICS_DB_PASSWORD: "${ANALYTICS_DB_PASSWORD:-analytics_dev_pwd}"
+      ANALYTICS_DB_SCHEMA: "${ANALYTICS_DB_SCHEMA:-analytics}"
+      HORIZON_MENTION_STORE: "${HORIZON_MENTION_STORE:-clickhouse}"
+      CLICKHOUSE_URL: "http://${CLICKHOUSE_HOST:-clickhouse}:8123"
+      CLICKHOUSE_DATABASE: "${CLICKHOUSE_DB:-horizon}"
+      CLICKHOUSE_USER: "${CLICKHOUSE_USER:-horizon}"
+      CLICKHOUSE_PASSWORD: "${CLICKHOUSE_PASSWORD:-clickhouse_dev_pwd}"
+      HORIZON_EMBEDDING_PROVIDER: "${HORIZON_EMBEDDING_PROVIDER:-tfidf-svd}"
+      HORIZON_EMBEDDING_DIM: "${HORIZON_EMBEDDING_DIM:-384}"
+      HORIZON_NARRATIVE_MODE: "${HORIZON_NARRATIVE_MODE:-extractive}"
+      HORIZON_METHODOLOGY_VERSION: "${HORIZON_METHODOLOGY_VERSION:-1.0.0}"
+      HORIZON_FIXED_CLOCK: "${HORIZON_FIXED_CLOCK:-}"
+      HORIZON_LLM_ENABLED: "${HORIZON_LLM_ENABLED:-false}"
+      # Сервис вывода моделей (ADR-0017). Пустой адрес выключает и семантический фильтр
+      # кандидатов, и русский слой выдачи: движок ведёт себя ровно так, как вёл до их появления,
+      # и остаётся побайтово воспроизводимым. Это законный режим, а не деградация.
+      HORIZON_NLP_URL: "${HORIZON_NLP_URL:-}"
+      HORIZON_NLP_JUDGE_MODEL: "${HORIZON_NLP_JUDGE_MODEL:-gpt-5.6-luna}"
+      HORIZON_NLP_JUDGE_ENABLED: "${HORIZON_NLP_JUDGE_ENABLED:-true}"
+      HORIZON_NLP_LOCALIZATION_ENABLED: "${HORIZON_NLP_LOCALIZATION_ENABLED:-true}"
+      HORIZON_NLP_TIMEOUT_SECONDS: "${HORIZON_NLP_TIMEOUT_SECONDS:-240}"
+      # Внешняя проверка зрелости по OpenAlex и Википедии: правило мейнстрима Этапа 1 на темах
+      # открытого запроса. Выключена по умолчанию — анализ не должен зависеть от чужих серверов,
+      # пока его об этом не попросили явно.
+      HORIZON_EXTERNAL_MATURITY_ENABLED: "${HORIZON_EXTERNAL_MATURITY_ENABLED:-false}"
+      HORIZON_EXTERNAL_MATURITY_BUDGET_SECONDS: "${HORIZON_EXTERNAL_MATURITY_BUDGET_SECONDS:-120}"
+      HORIZON_CONNECTOR_CONTACT_EMAIL: "${HORIZON_CONNECTOR_CONTACT_EMAIL:-ops@horizon.example}"
+      HORIZON_OPENALEX_API_KEY: "${HORIZON_OPENALEX_API_KEY:-}"
+      HORIZON_OPENALEX_API_KEYS: "${HORIZON_OPENALEX_API_KEYS:-}"
+      HORIZON_CONTACT_EMAIL: "${HORIZON_CONTACT_EMAIL:-}"
+      # Пусто — модель, поставляемая с образом (resources/signals-model.json).
+      HORIZON_SIGNALS_MODEL: "${HORIZON_SIGNALS_MODEL:-}"
+      HORIZON_SIGNALS_CACHE_DIR: "${HORIZON_SIGNALS_CACHE_DIR:-/opt/horizon/signals/cache}"
+      HORIZON_SIGNALS_TOP_CANDIDATES: "${HORIZON_SIGNALS_TOP_CANDIDATES:-150}"
+      HORIZON_SIGNALS_CACHE_ONLY: "${HORIZON_SIGNALS_CACHE_ONLY:-false}"
+      # Потолки времени опроса внешних источников: этап анализа обязан кончиться, даже когда
+      # чужой сервер молчит. Не дошло до кандидата — он считается по корпусной части с пометкой.
+      HORIZON_SIGNALS_BUDGET_SECONDS: "${HORIZON_SIGNALS_BUDGET_SECONDS:-300}"
+      HORIZON_SIGNALS_TERM_BUDGET_SECONDS: "${HORIZON_SIGNALS_TERM_BUDGET_SECONDS:-30}"
+      # Второй источник кандидатов движка signals: имена технологий от генеративной модели,
+      # публикуемые только после подтверждения внешними источниками (ТЗ §3.1). Требует
+      # HORIZON_NLP_URL; выключено по умолчанию — умолчание стенда не меняется само.
+      HORIZON_SIGNALS_PROPOSE_CANDIDATES: "${HORIZON_SIGNALS_PROPOSE_CANDIDATES:-false}"
+      HORIZON_SIGNALS_PROPOSED_LIMIT: "${HORIZON_SIGNALS_PROPOSED_LIMIT:-80}"
+    volumes:
+      # Эталонный корпус: `FixtureDocumentRepository` разрешает любой идентификатор снапшота в
+      # него целиком — так задуман сквозной прогон против настоящего стека без единого мока
+      # (ADR-0015). Смонтирован он был только у ingestion, поэтому аналитика молча падала на
+      # `corpus.fixture_missing` и отвечала SNAPSHOT_NOT_FOUND на каждый анализ.
+      - ../../fixtures:/opt/horizon/fixtures:ro
+      # Артефакт модели и кэш признаков живут на машине, а не в образе: модель переобучается
+      # отдельно от выпуска кода, а кэш обязан пережить перезапуск, иначе каждый анализ снова
+      # опрашивает внешние источники.
+      - ${HORIZON_SIGNALS_PATH:-/opt/horizon-signals}:/opt/horizon/signals
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=256m
+    deploy:
+      resources:
+        limits:
+          # Четыре гигабайта, а не два. Два выставлялись под эталонный корпус в 1244 документа и
+          # на настоящем не проверялись ни разу: первый же живой прогон по направлению
+          # «робототехника» (2998 документов из четырёх источников) убил воркер по памяти на
+          # стадии векторизации — `anon-rss 2 091 712 kB` при лимите 2 ГиБ. Снаружи это выглядело
+          # как зависший анализ на 56 %, потому что перезапущенный воркер видел заявку прежнего
+          # и отказывался её трогать.
+          memory: "${ANALYTICS_WORKER_MEM_LIMIT:-4g}"
+        reservations:
+          memory: 512m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── gateway (8080) ───────────────────────────
+  # Единая точка входа: rate limit, CORS, security-заголовки, SSE. Входа нет — API открыт.
+  gateway:
+    build:
+      context: ../../services
+      dockerfile: gateway/Dockerfile
+      args:
+        VERSION: "${HORIZON_VERSION:-dev}"
+        REVISION: "${HORIZON_REVISION:-unknown}"
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/gateway:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-gateway
+    restart: unless-stopped
+    stop_grace_period: 30s
+    depends_on:
+      trends-service:
+        condition: service_healthy
+      ingestion-service:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+    environment:
+      <<: [*jvm-env, *otel-env, *redis-env]
+      SERVER_PORT: "8080"
+      OTEL_SERVICE_NAME: "gateway"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=gateway,service.namespace=horizon,service.version=${HORIZON_VERSION:-dev},deployment.environment=${HORIZON_ENV:-local}"
+      HORIZON_UPSTREAM_TRENDS_URL: "${HORIZON_UPSTREAM_TRENDS_URL:-http://trends-service:8082}"
+      HORIZON_UPSTREAM_INGESTION_URL: "${HORIZON_UPSTREAM_INGESTION_URL:-http://ingestion-service:8083}"
+      CORS_ALLOWED_ORIGINS: "${CORS_ALLOWED_ORIGINS:-http://localhost:3000,http://localhost:8080}"
+      RATE_LIMIT_PER_MINUTE: "${RATE_LIMIT_PER_MINUTE:-300}"
+      RATE_LIMIT_BURST: "${RATE_LIMIT_BURST:-40}"
+    ports:
+      - "${GATEWAY_PORT:-8080}:8080"
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=64m
+    deploy:
+      resources:
+        limits:
+          memory: "${GATEWAY_MEM_LIMIT:-512m}"
+        reservations:
+          memory: 256m
+    logging: *default-logging
+    networks: [horizon]
+
+  # ─────────────────────────── frontend (3000 → 8080) ───────────────────────────
+  # Контейнер слушает 8080, а не 80: non-root не может занять привилегированный
+  # порт без CAP_NET_BIND_SERVICE, а NFR-S9 требует drop ALL. Снаружи порт 3000.
+  # ─────────────────────── вывод моделей (ADR-0017) ───────────────────────
+  #
+  # Генеративная модель — облачный API из разрешённого ТЗ списка (gpt-5.6-luna): локальный
+  # контейнер ollama с Qwen 3.5 4B простаивал и удалён 29.09. Сервис моделей держит перевод и знает,
+  # какая модель отвечает за какой шаг; при пустом `HORIZON_NLP_URL` движок работает без него.
+  nlp-service:
+    build:
+      context: ../../services/nlp-service
+      dockerfile: Dockerfile
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/nlp-service:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-nlp
+    restart: unless-stopped
+    environment:
+      TZ: "${TZ:-UTC}"
+      HORIZON_NLP_GENERATIVE_MODEL: "${HORIZON_NLP_JUDGE_MODEL:-gpt-5.6-luna}"
+      # Где живёт генеративная модель: `openai` — OpenAI-совместимый облачный API из перечня ТЗ
+      # (`ollama` — локальный сервер, если его поднять отдельно). Выбор явный, без автопереключения (ТЗ §3.1);
+      # имя модели задаётся той же HORIZON_NLP_JUDGE_MODEL и уходит в отчёт.
+      HORIZON_NLP_GENERATIVE_BACKEND: "${HORIZON_NLP_GENERATIVE_BACKEND:-openai}"
+      HORIZON_NLP_OPENAI_BASE_URL: "${HORIZON_NLP_OPENAI_BASE_URL:-}"
+      HORIZON_NLP_OPENAI_API_KEY: "${HORIZON_NLP_OPENAI_API_KEY:-}"
+      HORIZON_NLP_OPENAI_REASONING_EFFORT: "${HORIZON_NLP_OPENAI_REASONING_EFFORT:-low}"
+      # Глубокое исследование (разбор 102): потолки прогона на стороне сервиса моделей и то, как
+      # агент представляется площадкам, — тот же адрес, что у сервиса сбора. Токен GitHub
+      # необязателен: без него десять поисков в минуту.
+      #
+      # Это потолки, а не бюджет: бюджет прогона приходит в запросе сервиса сбора и зависит от
+      # режима анализа. Потолки обязаны покрывать качественный режим (20 минут агенту, 120 ходов,
+      # 90 страниц) — прежняя привязка к HORIZON_DEEPRESEARCH_MAX_FETCHES урезала бы его до 30.
+      HORIZON_NLP_RESEARCH_TIME_BUDGET_SECONDS: "${HORIZON_NLP_RESEARCH_TIME_BUDGET_SECONDS:-1260}"
+      HORIZON_NLP_RESEARCH_MAX_FETCHES: "${HORIZON_NLP_RESEARCH_MAX_FETCHES:-100}"
+      HORIZON_NLP_RESEARCH_MAX_ITERATIONS: "${HORIZON_NLP_RESEARCH_MAX_ITERATIONS:-120}"
+      HORIZON_NLP_RESEARCH_CONTACT_EMAIL: "${HORIZON_CONNECTOR_CONTACT_EMAIL:-ops@horizon.example}"
+      HORIZON_NLP_RESEARCH_GITHUB_TOKEN: "${HORIZON_GITHUB_TOKEN:-}"
+      # Собственный веб-корпус (разбор 110): файл JSON Lines с хоста, только чтение.
+      HORIZON_NLP_WEBCORPUS_PATH: "${HORIZON_NLP_WEBCORPUS_PATH:-/webcorpus/docs.jsonl}"
+      HORIZON_NLP_WEBCORPUS_SIGNALS_PATH: "${HORIZON_NLP_WEBCORPUS_SIGNALS_PATH:-/webcorpus/signals.jsonl}"
+      # Экспертная стадия перед финалом (разбор 110): своя модель, пусто — модель сервиса.
+      HORIZON_NLP_JURY_MODEL: "${HORIZON_NLP_JURY_MODEL:-}"
+      HORIZON_NLP_LOG_LEVEL: "${HORIZON_LOG_LEVEL:-INFO}"
+    volumes:
+      # Кэш Hugging Face: первый старт скачивает две модели перевода (~600 МБ). Том, а не образ —
+      # иначе каждая пересборка тянет их заново.
+      - "${HORIZON_MODELS_PATH:-/opt/horizon-models}/hf:/models"
+      # Собственный веб-корпус (разбор 110): docs.jsonl, собранный заранее; только чтение.
+      - "${HORIZON_WEBCORPUS_DIR:-/opt/horizon-webcorpus}:/webcorpus:ro"
+    ports:
+      - "127.0.0.1:${NLP_PORT:-8086}:8086"
+    deploy:
+      resources:
+        limits:
+          memory: "${NLP_MEM_LIMIT:-4g}"
+    logging: *default-logging
+    networks:
+      horizon:
+        aliases: [horizon-nlp]
+
+  frontend:
+    build:
+      context: ../../frontend
+      dockerfile: Dockerfile
+      args:
+        VERSION: "${HORIZON_VERSION:-dev}"
+        REVISION: "${HORIZON_REVISION:-unknown}"
+    image: "${HORIZON_IMAGE_REGISTRY:-horizon}/frontend:${HORIZON_IMAGE_TAG:-local}"
+    container_name: horizon-frontend
+    restart: unless-stopped
+    stop_grace_period: 15s
+    depends_on:
+      gateway:
+        condition: service_healthy
+    environment:
+      TZ: "${TZ:-UTC}"
+      # OTel-переменные заданы для единообразия со всеми остальными сервисами:
+      # штатный образ nginx их не читает (модуля OTel в нём нет), но при переходе
+      # на nginx с ngx_otel_module конфигурация уже готова, а сам факт наличия
+      # переменных делает инвентаризацию телеметрии полной.
+      <<: *otel-env
+      OTEL_SERVICE_NAME: "frontend"
+      OTEL_RESOURCE_ATTRIBUTES: "service.name=frontend,service.namespace=horizon,service.version=${HORIZON_VERSION:-dev},deployment.environment=${HORIZON_ENV:-local}"
+      NGINX_PORT: "8080"
+      NGINX_RESOLVER: "127.0.0.11"
+      HORIZON_GATEWAY_URL: "http://gateway:8080"
+      HORIZON_API_TIMEOUT: "60s"
+      HORIZON_CSP_CONNECT_SRC: "'self'"
+      # Локально HTTP: HSTS не выдаём, иначе браузер запомнит localhost как HTTPS-only.
+      HORIZON_HSTS_DIRECTIVE: ""
+    ports:
+      - "${FRONTEND_PORT:-3000}:8080"
+    <<: *hardened
+    tmpfs:
+      - /tmp:rw,nosuid,size=32m
+    deploy:
+      resources:
+        limits:
+          memory: "${FRONTEND_MEM_LIMIT:-128m}"
+        reservations:
+          memory: 64m
+    logging: *default-logging
+    networks: [horizon]
+
+# =============================================================================
+networks:
+  horizon:
+    name: horizon
+    driver: bridge
+    # Сегментация «фронт/бэк» здесь намеренно не делается: локально она даёт
+    # ложное чувство защищённости, а настоящая изоляция описана NetworkPolicy
+    # в deploy/helm/horizon/templates/networkpolicy.yaml.
+
+# =============================================================================
+volumes:
+  postgres-data:
+    name: horizon-postgres-data
+  redpanda-data:
+    name: horizon-redpanda-data
+  redis-data:
+    name: horizon-redis-data
+  clickhouse-data:
+    name: horizon-clickhouse-data
+  clickhouse-logs:
+    name: horizon-clickhouse-logs
+  prometheus-data:
+    name: horizon-prometheus-data
+  grafana-data:
+    name: horizon-grafana-data
+  tempo-data:
+    name: horizon-tempo-data
+  ingestion-raw:
+    name: horizon-ingestion-raw

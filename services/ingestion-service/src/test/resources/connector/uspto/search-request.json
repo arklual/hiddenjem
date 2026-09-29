@@ -1,0 +1,40 @@
+{
+  "start": 0,
+  "pageCount": 50,
+  "sort": "date_publ desc",
+  "docFamilyFiltering": "familyIdFiltering",
+  "searchType": 1,
+  "familyIdEnglishOnly": true,
+  "familyIdFirstPreferred": "US-PGPUB",
+  "familyIdSecondPreferred": "USPAT",
+  "familyIdThirdPreferred": "FIT",
+  "showDocPerFamilyPref": "showEnglish",
+  "queryId": 0,
+  "tagDocSearch": false,
+  "query": {
+    "caseId": 248194892,
+    "hl_snippets": "2",
+    "op": "OR",
+    "q": "(\"neuromorphic computing\").ti,ab. AND @PD>=20200101<=20260928",
+    "queryName": "(\"neuromorphic computing\").ti,ab. AND @PD>=20200101<=20260928",
+    "highlights": "1",
+    "qt": "brs",
+    "spellCheck": false,
+    "viewName": "tile",
+    "plurals": true,
+    "britishEquivalents": true,
+    "databaseFilters": [
+      {
+        "databaseName": "US-PGPUB",
+        "countryCodes": []
+      },
+      {
+        "databaseName": "USPAT",
+        "countryCodes": []
+      }
+    ],
+    "searchType": 1,
+    "ignorePersist": true,
+    "userEnteredQuery": "(\"neuromorphic computing\").ti,ab. AND @PD>=20200101<=20260928"
+  }
+}

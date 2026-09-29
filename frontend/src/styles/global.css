@@ -1,0 +1,69 @@
+@import './theme.css';
+@import './hiddenjem.css';
+
+/**
+ * Базовые правила поверх Tailwind.
+ *
+ * Всё, что раньше жило в собственной системе токенов, переехало в theme.css: цвета, радиусы,
+ * шкалы. Здесь осталось только то, что Tailwind не даёт сам и что обязано действовать на всю
+ * страницу разом.
+ */
+
+html,
+body,
+#root {
+  min-height: 100vh;
+}
+
+#root {
+  /* Своя область наложения: всплывающие слои приложения не должны конкурировать по z-index с
+     чем-либо снаружи корня. */
+  isolation: isolate;
+}
+
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Списки в интерфейсе — средство разметки, а не типографики: маркеры по умолчанию мешают почти
+   везде, где они здесь встречаются. */
+ol,
+ul {
+  padding: 0;
+  list-style: none;
+}
+
+::selection {
+  background: color-mix(in oklch, var(--primary) 22%, transparent);
+  color: var(--foreground);
+}
+
+/* Числа в таблицах обязаны выстраиваться в колонку: разряды сравнивают взглядом. */
+table {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Токены служебных экранов (Tailwind + shadcn) подстроены под Hiddenjem: чёрное на белом, те же
+   радиусы и шрифт. Иначе вход и администрирование выглядели бы другим продуктом. Видимый фокус и
+   «меньше движения» заданы в hiddenjem.css — один раз на весь интерфейс. */
+:root {
+  --radius: 0.75rem;
+  --background: #ffffff;
+  --foreground: #000000;
+  --card: #ffffff;
+  --card-foreground: #000000;
+  --popover: #ffffff;
+  --popover-foreground: #000000;
+  --primary: #000000;
+  --primary-foreground: #ffffff;
+  --secondary: #efefef;
+  --secondary-foreground: #000000;
+  --muted: #f3f3f3;
+  --muted-foreground: #4b4b4b;
+  --accent: #efefef;
+  --accent-foreground: #000000;
+  --border: rgba(0, 0, 0, 0.1);
+  --input: rgba(0, 0, 0, 0.2);
+  --ring: #000000;
+}

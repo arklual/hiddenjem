@@ -1,0 +1,535 @@
+{
+ "total": 1,
+ "max_score": 19.05009,
+ "data": [
+  {
+   "lens_id": "086-713-276-176-892",
+   "title": "A randomised non-comparative phase II trial of cixutumumab (IMC-A12) or ramucirumab (IMC-1121B) plus mitoxantrone and prednisone in men with metastatic docetaxel-pretreated castration-resistant prostate cancer",
+   "abstract": "Abstract Background Cixutumumab, a human monoclonal antibody (HuMAb), targets the insulin-like growth factor receptor...",
+   "date_published": "2015-06-13T00:00:00.000000+00:00",
+   "year_published": 2015,
+   "publication_type": "journal article",
+   "source": {
+    "title": "European journal of cancer (Oxford, England : 1990)",
+    "type": "Journal",
+    "publisher": "Elsevier Limited",
+    "issn": [
+     {
+      "type": "unknown",
+      "value": "18790852"
+     },
+     {
+      "type": "print",
+      "value": "09598049"
+     }
+    ],
+    "country": "United Kingdom",
+    "asjc_codes": [
+     "1306",
+     "2730"
+    ],
+    "asjc_subjects": [
+     "Cancer Research",
+     "Oncology"
+    ]
+   },
+   "authors": [
+    {
+     "first_name": "Maha",
+     "last_name": "Hussain",
+     "initials": "M",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2105158973"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "University of Michigan",
+       "name_original": "University of Michigan Comprehensive Cancer Center, Ann Arbor, MI, United States;",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "27837315"
+        },
+        {
+         "type": "grid",
+         "value": "grid.214458.e"
+        },
+        {
+         "type": "isni",
+         "value": "0000000419367347"
+        },
+        {
+         "type": "fundref",
+         "value": "100007270"
+        },
+        {
+         "type": "ror",
+         "value": "00jmfr291"
+        }
+       ],
+       "grid_id": "grid.214458.e",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Dana E.",
+     "last_name": "Rathkopf",
+     "initials": "DE",
+     "ids": [
+      {
+       "type": "orcid",
+       "value": "0000-0002-4503-7582"
+      },
+      {
+       "type": "magid",
+       "value": "722834404"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Memorial Sloan Kettering Cancer Center",
+       "name_original": "Memorial Sloan Kettering New York NY United States",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "1334819555"
+        },
+        {
+         "type": "grid",
+         "value": "grid.51462.34"
+        },
+        {
+         "type": "ror",
+         "value": "02yrq0923"
+        }
+       ],
+       "grid_id": "grid.51462.34",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Glenn",
+     "last_name": "Liu",
+     "initials": "G",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2133546628"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "University of Wisconsin-Madison",
+       "name_original": "University of Wisconsin, Carbone Cancer Center, Madison, WI, United States.",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "135310074"
+        },
+        {
+         "type": "grid",
+         "value": "grid.14003.36"
+        },
+        {
+         "type": "fundref",
+         "value": "100007015"
+        },
+        {
+         "type": "wikidata",
+         "value": "q838330"
+        },
+        {
+         "type": "ror",
+         "value": "01y2jtd41"
+        }
+       ],
+       "grid_id": "grid.14003.36",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Andrew J.",
+     "last_name": "Armstrong",
+     "initials": "AJ",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2172156363"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Duke University",
+       "name_original": "Duke Cancer Institute and Duke Prostate Center, Duke University, Durham, NC, United States",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "170897317"
+        },
+        {
+         "type": "grid",
+         "value": "grid.26009.3d"
+        },
+        {
+         "type": "fundref",
+         "value": "100006510"
+        },
+        {
+         "type": "wikidata",
+         "value": "q168751"
+        },
+        {
+         "type": "ror",
+         "value": "00py81415"
+        }
+       ],
+       "grid_id": "grid.26009.3d",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Kevin",
+     "last_name": "Kelly",
+     "initials": "K",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2097407452"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Thomas Jefferson University",
+       "name_original": "Thomas Jefferson Univ., Philadelphia, PA (United States)",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "149251103"
+        },
+        {
+         "type": "grid",
+         "value": "grid.265008.9"
+        },
+        {
+         "type": "ror",
+         "value": "00ysqcn41"
+        }
+       ],
+       "grid_id": "grid.265008.9",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Anna C.",
+     "last_name": "Ferrari",
+     "initials": "AC",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2312728207"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "New York University",
+       "name_original": "New York University Clinical Cancer Center, New York, NY, United States.",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "57206974"
+        },
+        {
+         "type": "grid",
+         "value": "grid.137628.9"
+        },
+        {
+         "type": "fundref",
+         "value": "100006732"
+        },
+        {
+         "type": "wikidata",
+         "value": "q49210"
+        },
+        {
+         "type": "ror",
+         "value": "0190ak572"
+        }
+       ],
+       "grid_id": "grid.137628.9",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "John D.",
+     "last_name": "Hainsworth",
+     "initials": "JD",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2145549068"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Sarah Cannon Research Institute",
+       "name_original": "Sarah Cannon Research Institute, Nashville, TN, United States",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "172427033"
+        },
+        {
+         "type": "grid",
+         "value": "grid.477834.b"
+        },
+        {
+         "type": "wikidata",
+         "value": "q30270369"
+        },
+        {
+         "type": "ror",
+         "value": "03cp5cj42"
+        }
+       ],
+       "grid_id": "grid.477834.b",
+       "country_code": "GB"
+      }
+     ]
+    },
+    {
+     "first_name": "Adarsh",
+     "last_name": "Joshi",
+     "initials": "A",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2097035297"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Eli Lilly and Company",
+       "name_original": "Eli Lilly and Company, Bridgewater, NJ, United States.",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "168537998"
+        },
+        {
+         "type": "grid",
+         "value": "grid.417540.3"
+        },
+        {
+         "type": "fundref",
+         "value": "100004312"
+        },
+        {
+         "type": "ror",
+         "value": "01qat3289"
+        }
+       ],
+       "grid_id": "grid.417540.3",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Rebecca R.",
+     "last_name": "Hozak",
+     "initials": "RR",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2182553763"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Eli Lilly and Company",
+       "name_original": "Eli Lilly and Company, Indianapolis, IN (United States)",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "168537998"
+        },
+        {
+         "type": "grid",
+         "value": "grid.417540.3"
+        },
+        {
+         "type": "fundref",
+         "value": "100004312"
+        },
+        {
+         "type": "ror",
+         "value": "01qat3289"
+        }
+       ],
+       "grid_id": "grid.417540.3",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Ling",
+     "last_name": "Yang",
+     "initials": "L",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2250633597"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Eli Lilly and Company",
+       "name_original": "Eli Lilly and Company, Bridgewater, NJ, United States.",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "168537998"
+        },
+        {
+         "type": "grid",
+         "value": "grid.417540.3"
+        },
+        {
+         "type": "fundref",
+         "value": "100004312"
+        },
+        {
+         "type": "ror",
+         "value": "01qat3289"
+        }
+       ],
+       "grid_id": "grid.417540.3",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Jonathan D.",
+     "last_name": "Schwartz",
+     "initials": "JD",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2155041711"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Eli Lilly and Company",
+       "name_original": "Eli Lilly and Company, Bridgewater, NJ, United States.",
+       "ids": [
+        {
+         "type": "magid",
+         "value": "168537998"
+        },
+        {
+         "type": "grid",
+         "value": "grid.417540.3"
+        },
+        {
+         "type": "fundref",
+         "value": "100004312"
+        },
+        {
+         "type": "ror",
+         "value": "01qat3289"
+        }
+       ],
+       "grid_id": "grid.417540.3",
+       "country_code": "US"
+      }
+     ]
+    },
+    {
+     "first_name": "Celestia S.",
+     "last_name": "Higano",
+     "initials": "CS",
+     "ids": [
+      {
+       "type": "magid",
+       "value": "2560077320"
+      }
+     ],
+     "affiliations": [
+      {
+       "name": "Fred Hutchinson Cancer Research Center",
+       "name_original": "University of Washington, Fred Hutchinson Cancer Research Center, Seattle, WA, United States",
+       "ids": [
+        {
+         "type": "grid",
+         "value": "grid.270240.3"
+        },
+        {
+         "type": "ror",
+         "value": "007ps6h72"
+        }
+       ],
+       "grid_id": "grid.270240.3",
+       "country_code": "US"
+      },
+      {
+       "name": "University of Washington",
+       "name_original": "University of Washington, Fred Hutchinson Cancer Research Center, Seattle, WA, United States",
+       "ids": [
+        {
+         "type": "fundref",
+         "value": "100007812"
+        },
+        {
+         "type": "grid",
+         "value": "grid.34477.33"
+        },
+        {
+         "type": "ror",
+         "value": "00cvxb145"
+        }
+       ],
+       "grid_id": "grid.34477.33",
+       "country_code": "US"
+      }
+     ]
+    }
+   ],
+   "external_ids": [
+    {
+     "type": "coreid",
+     "value": "82196673"
+    },
+    {
+     "type": "pmid",
+     "value": "26082390"
+    },
+    {
+     "type": "doi",
+     "value": "10.1016/j.ejca.2015.05.019"
+    },
+    {
+     "type": "pmcid",
+     "value": "pmc5024789"
+    },
+    {
+     "type": "magid",
+     "value": "2113210954"
+    }
+   ],
+   "scholarly_citations_count": 30,
+   "languages": [
+    "en"
+   ]
+  }
+ ],
+ "results": 1
+}

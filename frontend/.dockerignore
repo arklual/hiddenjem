@@ -1,0 +1,64 @@
+# =============================================================================
+#  Контекст сборки frontend (`frontend/`).
+# =============================================================================
+#  node_modules весит сотни мегабайт и всё равно ставится заново `npm ci`
+#  внутри образа — его отправка в билдер удлиняет каждую сборку на десятки секунд.
+# =============================================================================
+
+node_modules/
+.npm/
+.yarn/
+.pnp.*
+
+# ─── Результаты предыдущих локальных сборок ───
+dist/
+dist-ssr/
+build/
+.vite/
+.turbo/
+*.tsbuildinfo
+
+# ─── Тесты и их артефакты: в образ не попадают ───
+coverage/
+.vitest/
+test-results/
+playwright-report/
+blob-report/
+tests/
+**/*.test.ts
+**/*.test.tsx
+**/*.spec.ts
+**/*.spec.tsx
+
+# ─── Кэши инструментов ───
+.eslintcache
+.stylelintcache
+.cache/
+
+# ─── Docker ───
+Dockerfile
+.dockerignore
+
+# ─── Секреты и локальная конфигурация (NFR-S2) ───
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# ─── VCS, IDE, ОС ───
+.git
+.gitignore
+.github/
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*~
+
+# ─── Документация и логи ───
+*.md
+!README.md
+npm-debug.log*
+yarn-error.log*
+pnpm-debug.log*

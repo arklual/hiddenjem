@@ -1,0 +1,336 @@
+# Generic-term blacklist (methodology §7 step 3: "не входит в список общеупотребимых").
+#
+# Write entries in **plain language**, one per line. They are stemmed at load time with the
+# very same stemmer that produces candidate keys (see `blacklist.stem_phrase`), so
+# `neural networks`, `neural network` and `Neural Networks` all collapse onto one entry and
+# a hand-written stem can never silently disagree with the code.
+#
+# Matching is on the **whole** candidate key, never on single tokens: blocking `model` here
+# removes the bare unigram `model` and leaves `large language model` completely untouched.
+#
+# `#` starts a comment; blank lines are ignored.
+#
+# What belongs here: words and phrases that describe *research about* a technology rather
+# than a technology. What does not: anything an analyst would recognise as a technology,
+# however broad.
+
+# ── EN: research boilerplate ──
+new approach
+new method
+novel approach
+novel method
+novel technique
+new technique
+new model
+new framework
+new system
+proposed method
+proposed approach
+proposed model
+proposed system
+proposed framework
+experimental result
+experiment results
+future work
+related work
+state of the art
+recent years
+recent work
+recent advances
+this paper
+present paper
+current paper
+case study
+literature review
+systematic review
+open problem
+open question
+research question
+research direction
+research area
+research field
+key challenge
+main contribution
+our contribution
+our method
+our approach
+our model
+our results
+this study
+present study
+
+# ── EN: overly generic technical phrases ──
+new technology
+emerging technology
+digital technology
+information technology
+computing system
+computational method
+data set
+data analysis
+data processing
+data collection
+big data
+real world
+real time
+high performance
+high quality
+low cost
+large scale
+small scale
+wide range
+broad range
+end to end
+step by step
+trade off
+use case
+best practice
+information system
+software system
+software development
+system design
+system architecture
+technical report
+
+# ── Umbrella labels and outcomes, not identifiable technical mechanisms ──
+# Match the whole name: a concrete implementation beneath one of these areas remains eligible.
+digital financial ecosystem
+financial ecosystem
+financial infrastructure
+digital financial infrastructure
+ai solutions
+artificial intelligence solutions
+autonomous agents
+tokenized assets
+
+# ── EN: generic single words left behind by the stopword split ──
+# Phrases like "orders of magnitude" or "state of the art" are cut at the stopword, leaving
+# a bare, meaningless unigram. These are the ones worth blocking outright.
+accuracy
+algorithm
+analysis
+application
+architecture
+baseline
+benchmark
+bottleneck
+budget
+challenge
+collection
+comparison
+computation
+configuration
+cost
+dataset
+deployment
+design
+efficiency
+error
+evaluation
+experiment
+file
+framework
+function
+hardware
+implementation
+improvement
+increase
+information
+input
+latency
+learning
+magnitude
+measurement
+memory
+method
+metric
+model
+module
+network
+number
+optimization
+order
+output
+overhead
+paper
+parameter
+performance
+pipeline
+platform
+precision
+problem
+process
+quality
+rate
+recall
+research
+resource
+result
+scale
+score
+server
+setup
+software
+solution
+speed
+speedup
+strategy
+study
+task
+technique
+technology
+test
+throughput
+tool
+training
+value
+version
+workload
+work
+
+# ── RU: исследовательские клише ──
+новый подход
+новый метод
+новый способ
+новая модель
+новая система
+новая технология
+предлагаемый подход
+предлагаемый метод
+предлагаемая модель
+экспериментальные результаты
+результаты экспериментов
+данная работа
+настоящая работа
+настоящая статья
+данная статья
+обзор литературы
+систематический обзор
+дальнейшая работа
+открытый вопрос
+открытая проблема
+ключевая проблема
+основной вклад
+наш метод
+наш подход
+наша модель
+наши результаты
+цель работы
+задача работы
+актуальная задача
+практическая значимость
+научная новизна
+
+# ── RU: слишком общие технические понятия ──
+информационные технологии
+цифровые технологии
+вычислительные системы
+вычислительные методы
+обработка данных
+анализ данных
+сбор данных
+большие данные
+реальное время
+реальный мир
+высокая производительность
+высокое качество
+низкая стоимость
+большой масштаб
+широкий спектр
+широкий круг
+область применения
+сфера применения
+программное обеспечение
+программные системы
+система управления
+архитектура системы
+
+# ── RU: общие одиночные слова ──
+алгоритм
+анализ
+архитектура
+время
+данные
+задача
+измерение
+качество
+метрика
+модель
+набор
+обучение
+объем
+оценка
+ошибка
+память
+подход
+показатель
+получение
+предложение
+применение
+пример
+процесс
+работа
+разработка
+реализация
+решение
+сеть
+система
+скорость
+случай
+способ
+средство
+стоимость
+структура
+схема
+техника
+точность
+требование
+условие
+функция
+цель
+эксперимент
+эффективность
+# ── Cue phrases used by the extractive narrator ───────────────────────────────────────────────
+# These are the phrases that mark a problem or a benefit statement in an abstract. They are
+# extremely frequent by construction — every abstract contains at least one — so termhood ranks
+# them above real technology terms and they crowd out the candidate budget. They are signal for
+# the narrator and noise for the term extractor, and the two roles must not share a vocabulary.
+remains challenging
+remain challenging
+reliable operation remains challenging
+open problem
+main challenge
+key challenge
+is limited by
+are limited by
+suffers from
+bottleneck
+we show that
+we demonstrate
+experimental results show
+outperforms
+achieves state of the art
+enables
+announced competing effort
+announced competing efforts
+wide deployment
+analyst caution
+analysts caution
+early adopters
+recent work
+recent work on
+prior work
+future work
+in this paper
+in this work
+this paper presents
+we propose
+we present
+we introduce
+остаётся проблемой
+узкое место
+ограничен
+позволяет
+превосходит
+сокращает
+показано что

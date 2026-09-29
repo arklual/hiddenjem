@@ -1,0 +1,413 @@
+# Слова, которые не могут стоять на границе технологического термина.
+#
+# Правило узкое и намеренно отличается от generic_terms.txt. Там перечислены слова, которые не
+# являются термином *сами по себе* — но многие из них абсолютно законны как головное слово:
+# «federated learning», «transformer architecture», «vector memory». Использовать тот список для
+# границ нельзя: он вырезал бы настоящие технологии.
+#
+# Здесь только служебная лексика научного текста — глаголы утверждения, оценочные прилагательные
+# и дискурсивные существительные. Ни одно из этих слов не может открывать или закрывать имя
+# технологии. Именно они образуют обрывки вида «enables linear-time inference», «haloformer novel»,
+# «encrypted memory remains challenging», которые n-граммное окно вырезает из предложений.
+#
+# Формат: одно слово в строке, в исходной форме — стемминг применяется при загрузке.
+# Файл предназначен для правки под конкретный корпус: добавление слова сюда сужает выдачу
+# предсказуемо и обратимо, в отличие от подкрутки порогов.
+
+# ── глаголы утверждения и изложения ───────────────────────────────────────────────────────────
+# Глаголы, чья основа совпадает с основой законного слова внутри имени, остались здесь и
+# запрещены только на границе: support (support vector machine), address (address
+# translation), build (build system), report, yield, study, leverage, meet. Остальные
+# переехали в clause_verbs.txt, где запрещены в любом месте имени — личная форма глагола
+# внутри именной группы означает, что перед нами обрывок предложения, а не имя.
+proposes
+proposed
+shown
+achieved
+report
+reports
+reported
+described
+observed
+required
+yield
+yields
+increases
+address
+addresses
+study
+studies
+leverage
+leverages
+build
+builds
+meet
+meets
+support
+supports
+
+# ── оценочные и хеджирующие прилагательные ────────────────────────────────────────────────────
+novel
+new
+recent
+current
+existing
+prior
+previous
+future
+stable
+unstable
+known
+unknown
+reliable
+unreliable
+reproducible
+scalable
+efficient
+inefficient
+effective
+practical
+promising
+significant
+substantial
+considerable
+large
+larger
+small
+smaller
+high
+higher
+low
+lower
+fast
+faster
+slow
+slower
+good
+better
+best
+poor
+worse
+worst
+simple
+complex
+difficult
+challenging
+easy
+hard
+important
+key
+major
+minor
+general
+specific
+common
+rare
+typical
+standard
+possible
+impossible
+necessary
+sufficient
+open
+closed
+full
+partial
+complete
+incomplete
+early
+late
+long
+short
+wide
+narrow
+deep
+shallow
+strong
+weak
+real
+true
+false
+
+# ── дискурсивные существительные ──────────────────────────────────────────────────────────────
+approach
+approaches
+work
+works
+paper
+papers
+study
+studies
+result
+results
+finding
+findings
+contribution
+contributions
+section
+sections
+conclusion
+conclusions
+overview
+summary
+introduction
+background
+motivation
+limitation
+limitations
+direction
+directions
+perspective
+perspectives
+example
+examples
+case
+cases
+setting
+settings
+scenario
+scenarios
+context
+practice
+practices
+detail
+details
+aspect
+aspects
+issue
+issues
+problem
+problems
+challenge
+challenges
+question
+questions
+need
+needs
+use
+uses
+usage
+effort
+efforts
+attempt
+attempts
+step
+steps
+stage
+stages
+part
+parts
+number
+numbers
+amount
+level
+levels
+degree
+degrees
+range
+ranges
+term
+terms
+type
+types
+kind
+kinds
+form
+forms
+way
+ways
+
+# ── русские аналоги ───────────────────────────────────────────────────────────────────────────
+позволяет
+позволяют
+показывает
+показано
+предлагается
+предложен
+описывает
+рассматривается
+требует
+остаётся
+новый
+новая
+новое
+известный
+существующий
+предыдущий
+текущий
+значительный
+существенный
+важный
+основной
+общий
+простой
+сложный
+работа
+подход
+результат
+результаты
+пример
+случай
+задача
+проблема
+вопрос
+этап
+часть
+уровень
+способ
+
+# ── Абстрактные вершины: свойство, а не технология ──
+# Английская именная группа несёт смысл в последнем слове. Если это слово называет свойство,
+# аспект или метрику, то вся группа описывает *характеристику* технологии, а не саму технологию:
+# «available scalability», «protocol assumption», «handshake overhead», «physical threshold».
+#
+# Такие обрывки особенно опасны для этого продукта: они частотны (о свойствах пишут во всех
+# статьях подряд), выглядят как термины и потому занимают места в ТОП-15, вытесняя настоящие
+# зарождающиеся темы. Целыми фразами их не перечислить — на каждое слово-свойство приходится по
+# одной фразе на технологию.
+#
+# Список намеренно узкий: сюда попадают только слова, которые не могут быть названием вещи ни в
+# каком контексте. «architecture», «design», «memory» здесь отсутствуют — они законные вершины
+# («transformer architecture», «vector memory»).
+assumption
+assumptions
+scalability
+overhead
+overheads
+threshold
+thresholds
+requirement
+requirements
+aspect
+aspects
+issue
+issues
+property
+properties
+characteristic
+characteristics
+behaviour
+behavior
+capability
+capabilities
+availability
+reliability
+usability
+complexity
+efficiency
+accuracy
+consideration
+considerations
+limitation
+limitations
+implication
+implications
+advantage
+advantages
+drawback
+drawbacks
+tradeoff
+tradeoffs
+manufacture
+operation
+operations
+methodology
+procedure
+procedures
+
+# Метрики и величины. «accelerator utilisation», «acceptance rate» — это измерения технологии,
+# а не технологии. Проверять их особенно важно: об измерениях пишут в каждой второй статье, и на
+# эталонном корпусе `accelerator utilisation` занимал первое место в направлении «ИИ».
+rate
+rates
+ratio
+ratios
+utilisation
+utilization
+usage
+percentage
+count
+amount
+level
+levels
+degree
+extent
+magnitude
+
+# Абстракции процесса. «implementation of mixture», «bottleneck of autoregressive decoding» —
+# описания того, что с технологией происходит. Здесь нет «adaptation» и «generation»: они законные
+# вершины настоящих названий («domain adaptation», «retrieval-augmented generation»).
+implementation
+implementations
+bottleneck
+bottlenecks
+adoption
+deployment
+
+# ── География ──
+# Названия стран и регионов приходят из аффилиаций авторов и адресов заявителей патентов.
+# Технологией они не являются ни при каких условиях, а частота у них высокая.
+# «states» здесь отсутствует намеренно, хотя «United States» — самый частый источник шума:
+# его стем `state` убивает «state space model», «state machine», «solid-state battery». Это ровно
+# тот класс ложных срабатываний, о котором предупреждает шапка файла, и он стоит дороже шума.
+kingdom
+republic
+china
+india
+germany
+france
+japan
+korea
+netherlands
+switzerland
+singapore
+israel
+brazil
+canada
+australia
+europe
+european
+american
+russia
+russian
+
+# Добавлено по чтению выдачи по шести направлениям (2026-08-10).
+#
+# `available` — то же оценочное прилагательное, что уже стоят в списке выше (`existing`, `current`,
+# `prior`): «available cycle life», «available readout error» — обрывки фраз «…the available
+# readout error», занимавшие места в ТОП-15 по двум направлениям. Основа не совпадает с основой
+# «availability», поэтому «high availability» остаётся законным.
+#
+# `minus` — «minus twenty» стояло первым в отчёте по накопителям энергии: обрывок «…minus twenty
+# degrees». Ни одно имя технологии не начинается и не заканчивается этим словом.
+#
+# `concrete` отвергнут: это не только оценочное прилагательное, но и материал («concrete 3D
+# printing»), и здесь список сузил бы выдачу за пределами того корпуса, на котором мерили.
+available
+minus
+# Замер на настоящих данных: «effect of different», «different strategies» — оценочное
+# прилагательное, не бывающее ни вершиной имени, ни его началом.
+different
+
+# ── Должности и реквизиты компаний (разбор 101) ──
+# Пришли с отраслевыми медиа и блогами компаний: заметка о продукте цитирует «senior vice
+# president», «chief product officer», «managing director» и называет компанию «Amazon.com Inc».
+# До судьи на живых корпусах такие обрывки доходили в каждом направлении. Ни одно имя
+# технологии этими словами не начинается и не заканчивается; «directory» (Active Directory)
+# стеммируется иначе, чем «director», и не задет.
+president
+officer
+director
+founder
+cofounder
+ceo
+cto
+cfo
+vp
+inc
+com
+ltd
+llc
+corp
+gmbh
+spokesperson

@@ -1,0 +1,285 @@
+# =============================================================================
+#  Horizon — значения для промышленной среды
+# =============================================================================
+#  Применение (только из CI, только после ручного подтверждения окружения
+#  `production`, см. .github/workflows/release.yml):
+#
+#      helm upgrade --install horizon deploy/helm/horizon \
+#           --namespace horizon --create-namespace \
+#           -f deploy/helm/horizon/values-prod.yaml \
+#           --set global.imageTag=$RELEASE_TAG \
+#           --atomic --timeout 10m
+#
+#  --atomic обязателен: неудачный выкат откатывается целиком, а не оставляет
+#  половину сервисов новой версии рядом с половиной старой.
+#
+#  Базовый values.yaml уже написан под прод; здесь усилены ровно те места,
+#  где промышленная среда предъявляет требования, невозможные в dev.
+# =============================================================================
+
+global:
+  environment: production
+  domain: horizon.example.bank
+  # Тег всегда задаётся явно из CI (--set global.imageTag=v1.2.3).
+  # IfNotPresent: неизменяемый тег незачем перетягивать при каждом рестарте.
+  imagePullPolicy: IfNotPresent
+  imagePullSecrets:
+    - name: ghcr-pull-secret
+  logLevel: INFO
+  springProfiles: k8s,prod
+  commonLabels:
+    app.kubernetes.io/part-of: horizon
+    horizon.dev/tier: production
+    horizon.dev/criticality: high
+  commonAnnotations:
+    # Кто дежурит по этому сервису — первое, что ищут в 3 часа ночи.
+    horizon.dev/owner: "platform-team"
+    horizon.dev/runbook: "docs/04-operations/02-slo-and-runbooks.md"
+
+infrastructure:
+  postgres:
+    host: postgres-rw.horizon-data.svc.cluster.local
+    port: 5432
+    database: horizon
+    namespace: horizon-data
+    podLabels:
+      app.kubernetes.io/name: postgresql
+    # NFR-S1: внутрикластерный трафик к БД тоже шифруется.
+    sslMode: require
+    poolMaxSize: 20
+    poolMinIdle: 5
+    # ──────────────────────────────────────────────────────────────────────
+    #  Разделение ролей миграций и рантайма.
+    #  Flyway работает под migrationRole (владеет объектами схемы),
+    #  приложение — под ролью из Secret с правами только на данные.
+    # ──────────────────────────────────────────────────────────────────────
+    migrationRole: horizon_migrator
+  kafka:
+    bootstrapServers: kafka-kafka-bootstrap.horizon-data.svc.cluster.local:9092
+    port: 9092
+    namespace: horizon-data
+    podLabels:
+      strimzi.io/cluster: kafka
+    # Три реплики и min.insync.replicas=2: подтверждённая запись переживает
+    # потерю одного брокера. Без этого outbox гарантирует доставку в брокер,
+    # который может её потерять (ADR-0003 теряет смысл).
+    topicReplication: 3
+    topicPartitions: 6
+  redis:
+    host: redis-master.horizon-data.svc.cluster.local
+    port: 6379
+    namespace: horizon-data
+    podLabels:
+      app.kubernetes.io/name: redis
+  clickhouse:
+    host: clickhouse.horizon-data.svc.cluster.local
+    httpPort: 8123
+    database: horizon
+    namespace: horizon-data
+    podLabels:
+      app.kubernetes.io/name: clickhouse
+
+observability:
+  otel:
+    enabled: true
+    endpoint: http://otel-collector.observability.svc.cluster.local:4317
+    httpEndpoint: http://otel-collector.observability.svc.cluster.local:4318
+    namespace: observability
+    # 10%: на промышленном трафике полная трассировка стоит больше, чем даёт.
+    # Ошибочные и медленные трейсы досэмплируются хвостовой выборкой
+    # в коллекторе — то есть интересное сохраняется целиком.
+    samplingRatio: "0.1"
+  prometheus:
+    serviceMonitor:
+      enabled: true
+      interval: 15s
+      scrapeTimeout: 10s
+      labels:
+        release: kube-prometheus-stack
+
+secrets:
+  externalSecret:
+    enabled: true
+    secretStoreRef:
+      name: corporate-vault
+      kind: ClusterSecretStore
+    refreshInterval: 1h
+    remotePath: kv/horizon/production
+  name: horizon-secrets
+
+ingress:
+  enabled: true
+  className: nginx
+  tls:
+    enabled: true
+    secretName: horizon-tls
+    issuer: letsencrypt-prod
+  annotations:
+    cert-manager.io/cluster-issuer: letsencrypt-prod
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    # NFR-S1: TLS не ниже 1.2.
+    nginx.ingress.kubernetes.io/ssl-protocols: "TLSv1.2 TLSv1.3"
+    nginx.ingress.kubernetes.io/proxy-buffering: "off"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "300"
+    nginx.ingress.kubernetes.io/proxy-body-size: "2m"
+    nginx.ingress.kubernetes.io/limit-rps: "50"
+    nginx.ingress.kubernetes.io/limit-burst-multiplier: "3"
+    # ModSecurity: внешний рубеж перед валидацией приложения (NFR-S4).
+    nginx.ingress.kubernetes.io/enable-modsecurity: "true"
+    nginx.ingress.kubernetes.io/enable-owasp-core-rules: "true"
+
+networkPolicy:
+  enabled: true
+  defaultDeny: true
+  dnsNamespaceSelector:
+    kubernetes.io/metadata.name: kube-system
+  ingressControllerNamespaceSelector:
+    kubernetes.io/metadata.name: ingress-nginx
+
+defaults:
+  replicas: 2
+  revisionHistoryLimit: 5
+  # 60 с: 30 с на дообработку запросов (NFR-R7) + запас на preStop и
+  # завершение долгих консьюмеров.
+  terminationGracePeriodSeconds: 60
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      # Ноль: ёмкость во время выката не проседает ни на одну реплику.
+      maxUnavailable: 0
+  podDisruptionBudget:
+    enabled: true
+    maxUnavailable: 1
+  lifecycle:
+    # 10 с: столько нужно ingress-контроллеру, чтобы перечитать Endpoints.
+    preStopSleepSeconds: 10
+  topologySpreadConstraints:
+    - maxSkew: 1
+      topologyKey: topology.kubernetes.io/zone
+      # DoNotSchedule по зонам: в проде разъезд по зонам — это и есть
+      # отказоустойчивость. Если под некуда поставить, это должно быть
+      # видно как Pending, а не молча превратиться в размещение в одной зоне.
+      whenUnsatisfiable: DoNotSchedule
+    - maxSkew: 1
+      topologyKey: kubernetes.io/hostname
+      # По узлам — мягко: иначе выкат встанет при нехватке узлов в зоне.
+      whenUnsatisfiable: ScheduleAnyway
+
+services:
+  gateway:
+    replicas: 3
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 65
+      pods:
+        - metric: horizon_http_requests_per_second
+          averageValue: "50"
+
+  trends-service:
+    replicas: 3
+    hpa:
+      enabled: true
+      minReplicas: 3
+      maxReplicas: 12
+      targetCPUUtilizationPercentage: 65
+      pods:
+        - metric: horizon_http_requests_per_second
+          averageValue: "40"
+
+  ingestion-service:
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+    config:
+      SERVER_PORT: "8083"
+      # NFR-S12: контакт в User-Agent — требование ToS источников.
+      HORIZON_INGESTION_USER_AGENT: "HorizonBot/1.0"
+      # Ящик, по которому источник может ответить, и он же пропуск в «вежливый пул» Crossref и
+      # OpenAlex. Здесь его до сих пор не было вовсе: прод разворачивался с умолчанием из
+      # application.yml, то есть с заглушкой. Симптом приходит не сборкой, а 429 через часы и пустым
+      # прогоном сбора; при старте такая настройка пишет connectors.contact_email_is_placeholder.
+      HORIZON_CONNECTOR_CONTACT_EMAIL: "ops@horizon.example.bank"
+      HORIZON_INGESTION_MAX_DOCUMENTS_PER_RUN: "5000"
+      # Шестьдесят секунд, а не двадцать. Научные API отвечают на страницу выдачи десятки
+      # секунд, когда им тяжело: замер 2026-09-18 по arXiv с настоящим запросом направления —
+      # 6 s на сотню записей и 32 s на двести. При двадцати секундах это не медленная
+      # страница, а потерянный источник: четыре попытки по таймауту и отчёт без arXiv.
+      HORIZON_INGESTION_HTTP_TIMEOUT: "PT60S"
+      HORIZON_INGESTION_CB_FAILURE_RATE_THRESHOLD: "50"
+      HORIZON_INGESTION_CB_WAIT_DURATION: "PT30S"
+      # Fixture-коннектор в проде выключен: это тестовый источник (ADR-0015).
+      HORIZON_SOURCE_ARXIV_ENABLED: "true"
+      # Требует HORIZON_ALPHAXIV_API_KEY в Secret окружения.
+      HORIZON_SOURCE_ALPHAXIV_ENABLED: "false"
+      HORIZON_SOURCE_OPENALEX_ENABLED: "true"
+      HORIZON_SOURCE_CROSSREF_ENABLED: "true"
+      HORIZON_SOURCE_GITHUB_ENABLED: "true"
+      HORIZON_SOURCE_SEMANTICSCHOLAR_ENABLED: "true"
+      HORIZON_SOURCE_EUROPEPMC_ENABLED: "true"
+      HORIZON_SOURCE_HACKERNEWS_ENABLED: "true"
+      HORIZON_SOURCE_GDELT_ENABLED: "false"
+      # NFR-D3: сырые ответы хранятся 90 дней в объектном хранилище.
+
+  analytics-api:
+    replicas: 2
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 6
+      targetCPUUtilizationPercentage: 70
+
+  analytics-worker:
+    replicas: 2
+    resources:
+      requests:
+        cpu: 500m
+        memory: 1Gi
+      limits:
+        # Потолок NFR §9 для analytics-service.
+        cpu: 3000m
+        memory: 3Gi
+    hpa:
+      enabled: true
+      minReplicas: 2
+      maxReplicas: 8
+      # CPU отключён намеренно: воркер либо ждёт сообщение (0%), либо считает
+      # анализ (100%), и ни то, ни другое не говорит о нехватке ёмкости.
+      targetCPUUtilizationPercentage: 0
+      external:
+        - metric: kafka_consumergroup_lag
+          selector:
+            matchLabels:
+              consumergroup: horizon-analysis-worker
+              topic: horizon.analysis.commands.v1
+          targetAverageValue: "200"
+    config:
+      HORIZON_ANALYTICS_ROLE: "worker"
+      HORIZON_ANALYTICS_WORKER_CONCURRENCY: "4"
+      # Четыре анализа пачки идут по очереди — до сорока минут без опроса очереди.
+      HORIZON_ANALYTICS_MAX_POLL_INTERVAL_MS: "3600000"
+      HORIZON_WORKER_LIVENESS_FILE: "/tmp/worker-alive"
+      HORIZON_MENTION_STORE: "clickhouse"
+      HORIZON_EMBEDDING_PROVIDER: "tfidf-svd"
+      HORIZON_EMBEDDING_DIM: "384"
+      HORIZON_NARRATIVE_MODE: "extractive"
+      HORIZON_LLM_ENABLED: "false"
+      OMP_NUM_THREADS: "4"
+      OPENBLAS_NUM_THREADS: "4"
+      MKL_NUM_THREADS: "4"
+
+  frontend:
+    replicas: 3
+    config:
+      NGINX_PORT: "8080"
+      HORIZON_API_TIMEOUT: "60s"
+      # NFR-S5: HSTS с preload — только в проде, где сертификат доверенный
+      # и HTTPS гарантированно работает на всех поддоменах.
+      HORIZON_HSTS_DIRECTIVE: 'add_header Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" always;'

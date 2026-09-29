@@ -1,0 +1,47 @@
+{
+  "status": "ok",
+  "message-type": "work-list",
+  "message": {
+    "facets": {},
+    "total-results": 84,
+    "items-per-page": 2,
+    "next-cursor": "AoJw2p3f",
+    "items": [
+      {
+        "DOI": "10.1145/3589334.3645361",
+        "URL": "http://dx.doi.org/10.1145/3589334.3645361",
+        "type": "proceedings-article",
+        "title": ["Speculative Decoding for Latency-Critical Serving"],
+        "abstract": "<jats:p>We study <jats:italic>speculative decoding</jats:italic> under strict latency budgets.</jats:p>",
+        "container-title": ["Proceedings of the ACM Web Conference 2024"],
+        "ISSN": ["1234-5678"],
+        "is-referenced-by-count": 17,
+        "references-count": 41,
+        "publisher": "ACM",
+        "published-online": { "date-parts": [[2024, 5, 13]] },
+        "published-print": { "date-parts": [[2024, 11]] },
+        "issued": { "date-parts": [[2024]] },
+        "author": [
+          {
+            "given": "Anna",
+            "family": "Petrova",
+            "ORCID": "http://orcid.org/0000-0002-1825-0097",
+            "affiliation": [{ "name": "Skolkovo Institute of Science and Technology" }]
+          },
+          { "given": "Li", "family": "Wei", "affiliation": [] }
+        ]
+      },
+      {
+        "DOI": "10.5555/no-online-date",
+        "URL": "http://dx.doi.org/10.5555/no-online-date",
+        "type": "journal-article",
+        "title": ["Batching Strategies for Autoregressive Inference"],
+        "container-title": [],
+        "is-referenced-by-count": 0,
+        "published-print": { "date-parts": [[2023, 7, 4]] },
+        "issued": { "date-parts": [[2023]] },
+        "author": []
+      }
+    ]
+  }
+}
