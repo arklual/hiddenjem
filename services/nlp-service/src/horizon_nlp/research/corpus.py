@@ -32,6 +32,7 @@ from datetime import date
 from itertools import pairwise
 from pathlib import Path
 
+from horizon_nlp.research.language import detect_language
 from horizon_nlp.research.web import parse_date
 
 __all__ = ["CorpusDocument", "WebCorpus", "corpus"]
@@ -156,6 +157,17 @@ class CorpusDocument:
     evidence: int = 0
 
 
+def _page_language(recorded: object, title: object, text: str) -> str | None:
+    """Язык страницы: записанный сборщиком двухбуквенный код, иначе — определённый по тексту.
+
+    Сборщик писал в поле ``lang`` строку ``"None"``, когда не знал языка; такая метка не язык.
+    """
+    code = str(recorded or "").strip().lower()
+    if len(code) == 2 and code.isalpha():
+        return code
+    return detect_language(f"{title or ''}\n{text}")
+
+
 class WebCorpus:
     """Индекс BM25 по страницам корпуса. Потокобезопасен на чтение после построения."""
 
@@ -204,7 +216,7 @@ class WebCorpus:
                         published=parse_date(record.get("published")),
                         host=str(record.get("host") or ""),
                         sitename=record.get("sitename"),
-                        language=record.get("lang"),
+                        language=_page_language(record.get("lang"), record.get("title"), text),
                         topic=str(record.get("topic") or ""),
                         fetched_at=str(record.get("fetched_at") or ""),
                         robots=str(record.get("robots") or ""),

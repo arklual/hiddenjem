@@ -228,7 +228,7 @@ class DeepResearchDocument(BaseModel):
     origin: str
     via: str
     host: str
-    language: str
+    language: str | None = None
     excerpt: str
     sha256: str
     fetchedAt: str
@@ -587,7 +587,7 @@ def create_app() -> FastAPI:
             documents.append(
                 DeepResearchDocument(
                     url=d.url, title=d.title or d.url, publishedOn=d.published, sourceClass="NEWS",
-                    origin="webcorpus", via="webcorpus", host=d.host, language=(d.language or "en")[:2],
+                    origin="webcorpus", via="webcorpus", host=d.host, language=d.language,
                     excerpt=d.text[:4000], sha256=d.sha256, fetchedAt=d.fetched_at, httpStatus=200,
                     authors=[d.sitename or d.host], organization=d.host, organizationIsCompany=True,
                     doi=None, arxivId=None, venue=d.sitename or d.host,
@@ -682,7 +682,7 @@ def create_app() -> FastAPI:
                 continue
             documents.append(DeepResearchDocument(
                 url=d.url, title=d.title or d.url, publishedOn=d.published, sourceClass="NEWS",
-                origin="webcorpus", via="webcorpus", host=d.host, language=(d.language or "en")[:2],
+                origin="webcorpus", via="webcorpus", host=d.host, language=d.language,
                 excerpt=d.text[:4000], sha256=d.sha256, fetchedAt=d.fetched_at, httpStatus=200,
                 authors=[d.sitename or d.host], organization=d.host, organizationIsCompany=True,
                 doi=None, arxivId=None, venue=d.sitename or d.host,

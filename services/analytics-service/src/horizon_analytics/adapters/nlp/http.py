@@ -290,7 +290,7 @@ def _corpus_document(node: Mapping[str, object]) -> Document | None:
         url=url,
         fetched_at=fetched_at,
         abstract_text=str(node.get("excerpt") or "") or None,
-        language=str(node.get("language") or "en")[:2],
+        language=str(node.get("language"))[:2] if node.get("language") else None,
         venue=Venue(name=venue) if venue else None,
         authors=(Author(full_name=venue or host, organization_name=host or None),),
         relevance=1.0,

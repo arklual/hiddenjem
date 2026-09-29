@@ -43,6 +43,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import structlog
 
+from horizon_nlp.research.language import detect_language
 from horizon_nlp.research.prompt import (
     RECORDER_PROMPT,
     SYSTEM_PROMPT,
@@ -132,7 +133,7 @@ class ResearchDocument:
     origin: str
     via: str
     host: str
-    language: str
+    language: str | None
     excerpt: str
     sha256: str
     fetched_at: str
@@ -205,10 +206,8 @@ def _canonical_url(url: str) -> str:
     return urlunsplit((parts.scheme.lower(), parts.netloc.lower(), parts.path, parts.query, ""))
 
 
-def _language(text: str) -> str:
-    cyrillic = len(re.findall(r"[а-яА-ЯёЁ]", text[:4000]))
-    latin = len(re.findall(r"[a-zA-Z]", text[:4000]))
-    return "ru" if cyrillic > latin else "en"
+def _language(text: str) -> str | None:
+    return detect_language(text)
 
 
 def _excerpt(text: str, names: Sequence[str], limit: int = 4000) -> str:
